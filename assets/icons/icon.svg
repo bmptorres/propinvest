@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#111218"/>
+
+  <!-- Amber glow -->
+  <circle cx="256" cy="230" r="160" fill="#f59e0b" fill-opacity="0.08"/>
+
+  <!-- Building / house shape -->
+  <g transform="translate(256,256)">
+    <!-- Left tower -->
+    <rect x="-110" y="-80" width="70" height="130" rx="6" fill="#1e1f2a" stroke="#f59e0b" stroke-width="3"/>
+    <!-- Right tower -->
+    <rect x="40" y="-60" width="70" height="110" rx="6" fill="#1e1f2a" stroke="#f59e0b" stroke-width="3"/>
+    <!-- Center block -->
+    <rect x="-50" y="-100" width="100" height="150" rx="8" fill="#252630" stroke="#f59e0b" stroke-width="4"/>
+
+    <!-- Roof / triangle -->
+    <polygon points="0,-145 -65,-100 65,-100" fill="#f59e0b"/>
+
+    <!-- Windows left tower -->
+    <rect x="-95" y="-60" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.7"/>
+    <rect x="-68" y="-60" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.4"/>
+    <rect x="-95" y="-30" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.4"/>
+    <rect x="-68" y="-30" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.7"/>
+
+    <!-- Windows right tower -->
+    <rect x="55" y="-40" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.5"/>
+    <rect x="82" y="-40" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.8"/>
+    <rect x="55" y="-10" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.8"/>
+    <rect x="82" y="-10" width="18" height="18" rx="3" fill="#f59e0b" fill-opacity="0.4"/>
+
+    <!-- Center window -->
+    <rect x="-20" y="-75" width="40" height="35" rx="4" fill="#f59e0b" fill-opacity="0.9"/>
+
+    <!-- Door -->
+    <rect x="-18" y="15" width="36" height="36" rx="4" fill="#f59e0b" fill-opacity="0.3" stroke="#f59e0b" stroke-width="2"/>
+
+    <!-- Ground line -->
+    <line x1="-130" y1="50" x2="130" y2="50" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Trending arrow / chart line underneath -->
+    <polyline points="-110,85 -60,65 -10,75 40,45 90,30" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="90,30 78,22 82,36" fill="#f59e0b"/>
+  </g>
+
+  <!-- "PI" monogram subtle top right -->
+  <text x="400" y="80" font-family="sans-serif" font-weight="800" font-size="38" fill="#f59e0b" fill-opacity="0.25">PI</text>
+</svg>
