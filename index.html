@@ -497,13 +497,13 @@
 //  4. Activa Firestore Database (modo production)
 //  5. Copia as Firestore Rules abaixo
 // ═══════════════════════════════════════════════════════════════
-const firebaseConfig = {
-  apiKey: "AIzaSyARRMHbsKG_87hsS1BksA04Pw5JpDT9vGg",
-  authDomain: "propinvest-tessa.firebaseapp.com",
-  projectId: "propinvest-tessa",
-  storageBucket: "propinvest-tessa.firebasestorage.app",
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyARRMHbsKG_87hsS1BksA04Pw5JpDT9vGg",
+  authDomain:        "propinvest-tessa.firebaseapp.com",
+  projectId:         "propinvest-tessa",
+  storageBucket:     "propinvest-tessa.firebasestorage.app",
   messagingSenderId: "1003948279425",
-  appId: "1:1003948279425:web:1e0f217c333753ac372f80"
+  appId:             "1:1003948279425:web:1e0f217c333753ac372f80"
 };
 // Firestore Rules (cola em Firebase Console → Firestore → Rules):
 // rules_version = '2';
@@ -1773,14 +1773,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
 
   // Init Firebase — if config not set, fall back to localStorage mode
-  const firebaseReady = FIREBASE_CONFIG.apiKey !== 'const firebaseConfig = {
-  apiKey: "AIzaSyARRMHbsKG_87hsS1BksA04Pw5JpDT9vGg",
-  authDomain: "propinvest-tessa.firebaseapp.com",
-  projectId: "propinvest-tessa",
-  storageBucket: "propinvest-tessa.firebasestorage.app",
-  messagingSenderId: "1003948279425",
-  appId: "1:1003948279425:web:1e0f217c333753ac372f80"
-};';
+  const firebaseReady = FIREBASE_CONFIG.apiKey !== 'SUBSTITUI_AQUI';
   if(firebaseReady){
     initFirebase();
     // App will be shown by onAuthStateChanged
