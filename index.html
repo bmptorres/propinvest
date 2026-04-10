@@ -210,6 +210,16 @@
     .tessa-footer-label{font-size:9px;font-weight:500;letter-spacing:.1em;color:rgba(201,213,207,0.35);text-transform:uppercase;}
     .toast{position:fixed;bottom:calc(var(--nav-h) + 40px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(18px);background:var(--card2);border:1px solid var(--border2);border-radius:11px;padding:11px 18px;font-size:13px;font-weight:700;z-index:200;opacity:0;transition:opacity .2s,transform .2s;white-space:nowrap;pointer-events:none;}
     .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    /* ── NEW TABS — responsive value rows ─────────────────── */
+    .val-row{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:13px 16px;background:var(--surface);border-radius:var(--radius-sm);}
+    .val-row .vl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;}
+    .val-row .vs{font-size:10px;color:var(--muted);}
+    .val-row .vv{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,4vw,20px);text-align:right;word-break:break-all;}
+    /* Range slider styling */
+    input[type=range]{height:6px;border-radius:3px;outline:none;border:none;background:var(--border2);cursor:pointer;}
+    @media(min-width:600px){
+      .offer-grid{grid-template-columns:1fr 1fr 1fr !important;}
+    }
     /* ── BREAKPOINTS ───────────────────────────────────────── */
     @media(min-width:600px){
       .form-grid{grid-template-columns:1fr 1fr;}
@@ -1164,18 +1174,28 @@ function tabFinanciamento(p,a){
   </div>
   ${useF&&a?`<div class="card">
     <div class="card-title">Análise do Financiamento</div>
-    ${mt('Montante financiado',eur(a.loanAmt),'c-b')}
-    ${mt('LTV (Loan-to-Value)',ltvPct+'%','c-b')}
-    ${mt('Comissão de entrada',eur(a.entryFee),'c-r')}
-    ${mt('Prestação mensal estimada',eur(a.monthlyPayment),'c-a')}
-    ${mt('Custo financeiro durante obra ('+a.holdMonths+' meses)',eur(a.financingInterestHolding),'c-r')}
-    <div style="height:1px;background:var(--border);margin:8px 0"></div>
-    ${mt('Capital próprio necessário',eur(ownCapital),'c-g')}
-    <div style="margin-top:10px;padding:11px 13px;background:var(--blue-dim);border-radius:11px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;">
-      <span style="color:var(--text2)">Cash-on-Cash Return (ROI/Cap.Próprio)</span>
-      <span style="color:var(--blue)">${pct(coC)}</span>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px">Prestação Mensal</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,3.5vw,20px);color:var(--accent);word-break:break-all">${eur(a.monthlyPayment)}</div>
+      </div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px">LTV</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,3.5vw,20px);color:var(--blue)">${ltvPct}%</div>
+      </div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px">Capital Próprio</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,3.5vw,20px);color:var(--good);word-break:break-all">${eur(ownCapital)}</div>
+      </div>
+      <div style="background:var(--blue-dim);border:1px solid rgba(59,130,246,.2);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--blue);margin-bottom:5px">Cash-on-Cash ROI</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,3.5vw,20px);color:var(--blue)">${pct(coC)}</div>
+      </div>
     </div>
-    <div class="alert warn" style="margin-top:10px"><span>ℹ️</span><span>O Cash-on-Cash Return mede o retorno sobre o capital <em>próprio</em> investido — tipicamente superior ao ROI total quando há alavancagem.</span></div>
+    ${mt('Montante financiado',eur(a.loanAmt),'c-b')}
+    ${mt('Comissão de entrada',eur(a.entryFee),'c-r')}
+    ${mt('Custo financeiro durante obra ('+a.holdMonths+' meses)',eur(a.financingInterestHolding),'c-r')}
+    <div class="alert warn" style="margin-top:10px"><span>ℹ️</span><span>Cash-on-Cash Return = retorno sobre o capital próprio. Com alavancagem, tipicamente superior ao ROI total.</span></div>
   </div>`:`<div class="card"><div class="alert warn"><span>💡</span><span>Activa o financiamento bancário para ver a análise de alavancagem e cash-on-cash return.</span></div></div>`}
   <div class="card">
     <div class="card-title">⏱️ Custos de Posse (Holding Costs)</div>
@@ -1190,15 +1210,15 @@ function tabFinanciamento(p,a){
   </div>
   ${a?`<div class="card">
     <div class="card-title">Resumo Custos de Posse</div>
-    ${mt('Duração estimada','${hc.durationMonths||6} meses')}
-    ${mt('IMI proporcional ('+a.holdMonths+' meses)',eur(a.imiHolding),'c-r')}
+    ${mt('Duração estimada',a.holdMonths+' meses')}
+    ${mt('IMI proporcional',eur(a.imiHolding),'c-r')}
     ${mt('Outros custos fixos acumulados',eur(a.fixedHolding),'c-r')}
     ${useF?mt('Juros financiamento durante obra',eur(a.financingInterestHolding),'c-r'):''}
-    <div style="margin-top:10px;padding:11px 13px;background:var(--bad-dim);border-radius:11px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;">
-      <span style="color:var(--text2)">Total Holding Costs</span>
-      <span style="color:var(--bad)">${eur(a.holdingTotal)}</span>
+    <div style="margin-top:10px;padding:12px 14px;background:var(--bad-dim);border-radius:11px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;font-weight:700;color:var(--text2)">Total Holding Costs</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(15px,4vw,20px);color:var(--bad);word-break:break-all">${eur(a.holdingTotal)}</span>
     </div>
-    <div class="alert warn" style="margin-top:10px"><span>⚠️</span><span>Os holding costs ainda não entram automaticamente no waterfall — adiciona-os nos Outros Custos do projeto para o cálculo ser preciso.</span></div>
+    <div class="alert warn" style="margin-top:10px"><span>⚠️</span><span>Adiciona estes custos nos Outros Custos do projeto para entrarem no cálculo do waterfall e do PDF.</span></div>
   </div>`:''}`;
 }
 
@@ -1226,21 +1246,27 @@ function tabOferta(p,a){
       <div>A margem de 30% cobre: lucro do promotor + comissão AMI + imprevistos + impostos sobre mais-valias.</div>
     </div>
     ${arv<=0?`<div class="alert warn"><span>💡</span><span>Preenche o Preço de Venda Esperado no separador Projeto ou Venda para activar esta calculadora.</span></div>`:`
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-      <div class="kpi kpi-r" style="border-color:var(--good)">
-        <div class="kpi-label">Conservador (65%)</div>
-        <div class="kpi-val" style="color:var(--good);font-size:clamp(13px,3vw,18px)">${eur(Math.max(0,rule65))}</div>
-        <div class="kpi-sub">Margem extra segurança</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:13px 16px;background:var(--surface);border:1px solid var(--good);border-radius:var(--radius-sm)">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:4px">Conservador (65%)</div>
+          <div style="font-size:10px;color:var(--muted)">Margem extra segurança</div>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(15px,4vw,22px);color:var(--good);text-align:right;word-break:break-all">${eur(Math.max(0,rule65))}</div>
       </div>
-      <div class="kpi kpi-a" style="border-color:var(--accent);border-width:2px">
-        <div class="kpi-label">Standard (70%) ★</div>
-        <div class="kpi-val c-a" style="font-size:clamp(13px,3vw,18px)">${eur(Math.max(0,rule70))}</div>
-        <div class="kpi-sub">Regra gold standard</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:13px 16px;background:var(--surface);border:2px solid var(--accent);border-radius:var(--radius-sm)">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:4px">⭐ Standard (70%)</div>
+          <div style="font-size:10px;color:var(--muted)">Regra gold standard</div>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(15px,4vw,22px);color:var(--accent);text-align:right;word-break:break-all">${eur(Math.max(0,rule70))}</div>
       </div>
-      <div class="kpi kpi-b">
-        <div class="kpi-label">Agressivo (75%)</div>
-        <div class="kpi-val c-b" style="font-size:clamp(13px,3vw,18px)">${eur(Math.max(0,rule75))}</div>
-        <div class="kpi-sub">Mercado competitivo</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:13px 16px;background:var(--surface);border:1px solid var(--blue);border-radius:var(--radius-sm)">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:4px">Agressivo (75%)</div>
+          <div style="font-size:10px;color:var(--muted)">Mercado competitivo</div>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(15px,4vw,22px);color:var(--blue);text-align:right;word-break:break-all">${eur(Math.max(0,rule75))}</div>
       </div>
     </div>
     <div class="card" style="background:var(--surface);margin:0">
@@ -1342,16 +1368,20 @@ function updateCenarios(){
   if(noChange){body.innerHTML=`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Move os sliders para ver o impacto no teu projeto.</div>`;return;}
 
   body.innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div class="kpi kpi-g">
-        <div class="kpi-label">Lucro Bruto (cenário)</div>
-        <div class="kpi-val ${newProfit>=0?'c-g':'c-r'}">${eur(newProfit)}</div>
-        <div class="kpi-sub" style="color:${dProfit>=0?'var(--good)':'var(--bad)'}">${dProfit>=0?'▲':'▼'} ${eur(Math.abs(dProfit))} vs base</div>
+    <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:13px 16px;background:var(--surface);border-radius:var(--radius-sm);border:1px solid ${newProfit>=0?'var(--good)':'var(--bad)'}">
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px">Lucro Bruto (cenário)</div>
+          <div style="font-size:10px;color:${dProfit>=0?'var(--good)':'var(--bad)'}">${dProfit>=0?'▲':'▼'} ${eur(Math.abs(dProfit))} vs base</div>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,4vw,21px);color:${newProfit>=0?'var(--good)':'var(--bad)'};text-align:right;word-break:break-all">${eur(newProfit)}</div>
       </div>
-      <div class="kpi kpi-r">
-        <div class="kpi-label">Lucro Líquido (cenário)</div>
-        <div class="kpi-val ${finalNetProfit>=0?'c-g':'c-r'}">${eur(finalNetProfit)}</div>
-        <div class="kpi-sub" style="color:${dNetProfit>=0?'var(--good)':'var(--bad)'}">${dNetProfit>=0?'▲':'▼'} ${eur(Math.abs(dNetProfit))} vs base</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:13px 16px;background:var(--surface);border-radius:var(--radius-sm);border:1px solid ${finalNetProfit>=0?'var(--good)':'var(--bad)'}">
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px">Lucro Líquido (cenário)</div>
+          <div style="font-size:10px;color:${dNetProfit>=0?'var(--good)':'var(--bad)'}">${dNetProfit>=0?'▲':'▼'} ${eur(Math.abs(dNetProfit))} vs base</div>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,4vw,21px);color:${finalNetProfit>=0?'var(--good)':'var(--bad)'};text-align:right;word-break:break-all">${eur(finalNetProfit)}</div>
       </div>
     </div>
     ${mt('Venda simulada',eur(newSale))}
