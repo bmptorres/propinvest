@@ -416,6 +416,9 @@
         <button class="sub-tab" data-sub="venda">Venda</button>
         <button class="sub-tab" data-sub="fiscal">Fiscal</button>
         <button class="sub-tab" data-sub="mercado">Mercado</button>
+        <button class="sub-tab" data-sub="financiamento">💰 Financ.</button>
+        <button class="sub-tab" data-sub="oferta">🎯 Oferta</button>
+        <button class="sub-tab" data-sub="cenarios">🔀 Cenários</button>
       </div>
       <div id="detailContent"></div>
     </div>
@@ -549,6 +552,8 @@ function blank(){
     saleConfig:{brokerCommissionPct:5,otherSaleCosts:0},
     fiscalConfig:{capitalGainInclusionPct:50,manualTaxOverride:0,fiscalNotes:''},
     marketConfig:{baselineMarketPsm:0,comparableCount:0,marketTrendPct:0,conditionLevel:'medio',renovationLevel:'integral',hasPool:false,hasGarage:false,hasGarden:false,hasTerrace:false,hasElevator:false},
+    financingConfig:{useFinancing:false,loanAmount:0,interestRatePct:3.5,termYears:25,entryFeePct:1},
+    holdingConfig:{durationMonths:6,monthlyFixedCosts:0,imiRate:0.003},
     investors:[],acquisitionEntries:[],workCosts:[],otherCosts:[]
   };
 }
@@ -676,6 +681,8 @@ function migrateP(p){
   proj.saleConfig={...bp.saleConfig,...(p.saleConfig||{})};
   proj.fiscalConfig={...bp.fiscalConfig,...(p.fiscalConfig||{})};
   proj.marketConfig={...bp.marketConfig,...(p.marketConfig||{})};
+  proj.financingConfig={...bp.financingConfig,...(p.financingConfig||{})};
+  proj.holdingConfig={...bp.holdingConfig,...(p.holdingConfig||{})};
   proj.investors=Array.isArray(p.investors)?p.investors.map((inv,i)=>({
     id:inv.id||uid('i'),name:inv.name||'',role:inv.role||'Capital',
     colorHex:inv.colorHex||nextColor(p.investors.slice(0,i).map(x=>x.colorHex).filter(Boolean)),
@@ -743,6 +750,31 @@ function analyze(p){
   const acqAll=Number(p.purchasePrice||0)+lg.imt+lg.is+lg.reg+lg.cert+acqManual;
   const wrkTotal=sum(p.workCosts,w=>Number(w.amount||0));
   const othTotal=sum(p.otherCosts,o=>Number(o.amount||0));
+
+  // ── FINANCING ENGINE ─────────────────────────────────────
+  const fc=p.financingConfig||{};
+  const useFinancing=!!fc.useFinancing;
+  const loanAmt=Number(fc.loanAmount||0);
+  const annualRate=Number(fc.interestRatePct||3.5)/100;
+  const termMonths=Number(fc.termYears||25)*12;
+  const monthlyRate=annualRate/12;
+  const entryFee=loanAmt*Number(fc.entryFeePct||1)/100;
+  // PMT formula: monthly payment
+  const monthlyPayment=loanAmt>0&&monthlyRate>0
+    ?r2(loanAmt*(monthlyRate*Math.pow(1+monthlyRate,termMonths))/(Math.pow(1+monthlyRate,termMonths)-1))
+    :0;
+  const equityInvested=useFinancing?Math.max(0,Number(p.purchasePrice||0)-loanAmt+entryFee):0;
+
+  // ── HOLDING COSTS ENGINE ─────────────────────────────────
+  const hc=p.holdingConfig||{};
+  const holdMonths=Number(hc.durationMonths||6);
+  const monthlyFixed=Number(hc.monthlyFixedCosts||0);
+  const imiRate=Number(hc.imiRate||0.003);
+  const imiAnnual=r2(Math.max(Number(p.purchasePrice||0),Number(p.vpt||0))*imiRate);
+  const imiHolding=r2(imiAnnual*(holdMonths/12));
+  const financingInterestHolding=useFinancing?r2(monthlyPayment*holdMonths):0;
+  const fixedHolding=r2(monthlyFixed*holdMonths);
+  const holdingTotal=r2(imiHolding+fixedHolding+(useFinancing?financingInterestHolding:0));
   const saleRef=Number(p.actualSalePrice||0)>0?Number(p.actualSalePrice||0):Number(p.expectedSalePrice||0);
   const ami=saleRef*(Number(p.saleConfig.brokerCommissionPct||0)/100);
   const saleOth=Number(p.saleConfig.otherSaleCosts||0);
@@ -788,7 +820,7 @@ function analyze(p){
   if(profit<0&&saleRef>0)warns.push({t:'err',m:'Venda líquida não cobre o capital investido!'});
   if(!mkt)warns.push({t:'warn',m:'Preenche €/m², área e comparáveis para estimativa de mercado.'});
   if(manualTax)warns.push({t:'warn',m:'Override manual de imposto ativo.'});
-  return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax};
+  return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,holdMonths,useFinancing};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -942,6 +974,9 @@ function renderDetail(){
   else if(curSub==='venda')c.innerHTML=tabVenda(p,a);
   else if(curSub==='fiscal')c.innerHTML=tabFiscal(p,a);
   else if(curSub==='mercado')c.innerHTML=tabMercado(p,a);
+  else if(curSub==='financiamento'){c.innerHTML=tabFinanciamento(p,a);bindFinanciamento(p);}
+  else if(curSub==='oferta')c.innerHTML=tabOferta(p,a);
+  else if(curSub==='cenarios'){c.innerHTML=tabCenarios(p,a);bindCenarios(p,a);}
   bindInputs(p);
   renderLists(p,a);
 }
@@ -1102,6 +1137,236 @@ function tabMercado(p,a){
   </div>`:`<div class="card"><div class="alert warn"><span>ℹ️</span><span>Preenche €/m² base, área e número de comparáveis para obter sugestão de preço.</span></div></div>`}`;
 }
 
+// ─────────────────────────────────────────────────────────────
+//  TAB: FINANCIAMENTO
+// ─────────────────────────────────────────────────────────────
+function tabFinanciamento(p,a){
+  const fc=p.financingConfig||{};
+  const hc=p.holdingConfig||{};
+  const useF=!!fc.useFinancing;
+  const ltvPct=Number(p.purchasePrice||0)>0?((Number(fc.loanAmount||0)/Number(p.purchasePrice||0))*100).toFixed(1):0;
+  const totalCost=a?(a.acqAll+a.wrkTotal+a.holdingTotal):0;
+  const ownCapital=useF?Math.max(0,totalCost-Number(fc.loanAmount||0)):totalCost;
+  const coC=useF&&ownCapital>0&&a?(a.netProfit/ownCapital*100):0;
+
+  return`<div class="card">
+    <div class="card-title">💰 Módulo de Financiamento Bancário</div>
+    <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      Activa o crédito habitação para calcular a <strong style="color:var(--text)">prestação mensal</strong>, o <strong style="color:var(--text)">ROI sobre capital próprio</strong> e o impacto da <strong style="color:var(--text)">alavancagem financeira</strong>.
+    </div>
+    <div class="form-grid">
+      <div class="fgrp f-full"><label class="cb-row"><input type="checkbox" id="fn_use"${useF?' checked':''}/><span>Usar financiamento bancário neste projeto</span></label></div>
+      ${fi('fn_loan','Montante do empréstimo (€)',fc.loanAmount||0,'number')}
+      ${fi('fn_rate','Taxa de juro anual (%)',fc.interestRatePct||3.5,'number')}
+      ${fi('fn_term','Prazo do empréstimo (anos)',fc.termYears||25,'number')}
+      ${fi('fn_fee','Comissão de abertura/entrada (%)',fc.entryFeePct||1,'number')}
+    </div>
+  </div>
+  ${useF&&a?`<div class="card">
+    <div class="card-title">Análise do Financiamento</div>
+    ${mt('Montante financiado',eur(a.loanAmt),'c-b')}
+    ${mt('LTV (Loan-to-Value)',ltvPct+'%','c-b')}
+    ${mt('Comissão de entrada',eur(a.entryFee),'c-r')}
+    ${mt('Prestação mensal estimada',eur(a.monthlyPayment),'c-a')}
+    ${mt('Custo financeiro durante obra ('+a.holdMonths+' meses)',eur(a.financingInterestHolding),'c-r')}
+    <div style="height:1px;background:var(--border);margin:8px 0"></div>
+    ${mt('Capital próprio necessário',eur(ownCapital),'c-g')}
+    <div style="margin-top:10px;padding:11px 13px;background:var(--blue-dim);border-radius:11px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;">
+      <span style="color:var(--text2)">Cash-on-Cash Return (ROI/Cap.Próprio)</span>
+      <span style="color:var(--blue)">${pct(coC)}</span>
+    </div>
+    <div class="alert warn" style="margin-top:10px"><span>ℹ️</span><span>O Cash-on-Cash Return mede o retorno sobre o capital <em>próprio</em> investido — tipicamente superior ao ROI total quando há alavancagem.</span></div>
+  </div>`:`<div class="card"><div class="alert warn"><span>💡</span><span>Activa o financiamento bancário para ver a análise de alavancagem e cash-on-cash return.</span></div></div>`}
+  <div class="card">
+    <div class="card-title">⏱️ Custos de Posse (Holding Costs)</div>
+    <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      Custos que acumulam enquanto tens o imóvel (durante a obra e venda). Impactam directamente o lucro real.
+    </div>
+    <div class="form-grid">
+      ${fi('hc_months','Duração estimada do projeto (meses)',hc.durationMonths||6,'number')}
+      ${fi('hc_fixed','Outros custos mensais fixos (€/mês)',hc.monthlyFixedCosts||0,'number')}
+      ${fi('hc_imi','Taxa IMI anual (ex: 0.003 = 0,3%)',hc.imiRate||0.003,'number')}
+    </div>
+  </div>
+  ${a?`<div class="card">
+    <div class="card-title">Resumo Custos de Posse</div>
+    ${mt('Duração estimada','${hc.durationMonths||6} meses')}
+    ${mt('IMI proporcional ('+a.holdMonths+' meses)',eur(a.imiHolding),'c-r')}
+    ${mt('Outros custos fixos acumulados',eur(a.fixedHolding),'c-r')}
+    ${useF?mt('Juros financiamento durante obra',eur(a.financingInterestHolding),'c-r'):''}
+    <div style="margin-top:10px;padding:11px 13px;background:var(--bad-dim);border-radius:11px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;">
+      <span style="color:var(--text2)">Total Holding Costs</span>
+      <span style="color:var(--bad)">${eur(a.holdingTotal)}</span>
+    </div>
+    <div class="alert warn" style="margin-top:10px"><span>⚠️</span><span>Os holding costs ainda não entram automaticamente no waterfall — adiciona-os nos Outros Custos do projeto para o cálculo ser preciso.</span></div>
+  </div>`:''}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  TAB: OFERTA MÁXIMA
+// ─────────────────────────────────────────────────────────────
+function tabOferta(p,a){
+  const arv=Number(p.expectedSalePrice||p.actualSalePrice||0);
+  const obras=a?a.wrkTotal:0;
+  const impostos=a?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0;
+  const ami=a?a.ami:0;
+  // 70% Rule adapted for PT market
+  const rule70=arv*0.70-obras-impostos;
+  const rule65=arv*0.65-obras-impostos;
+  const rule75=arv*0.75-obras-impostos;
+  const currentPrice=Number(p.purchasePrice||0);
+  const safetyMargin=currentPrice>0&&rule70>0?((rule70-currentPrice)/rule70*100):0;
+  const isGoodDeal=currentPrice>0&&currentPrice<=rule70;
+
+  return`<div class="card">
+    <div class="card-title">🎯 Calculadora de Oferta Máxima</div>
+    <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:14px;font-size:12px;line-height:1.7;color:var(--text2)">
+      <div style="color:var(--accent);font-weight:700;margin-bottom:6px">📐 Regra dos 70% — Adaptada ao Mercado PT</div>
+      <div><strong style="color:var(--text)">Fórmula:</strong> Preço Máximo = ARV × 70% − Obras − Impostos</div>
+      <div>A margem de 30% cobre: lucro do promotor + comissão AMI + imprevistos + impostos sobre mais-valias.</div>
+    </div>
+    ${arv<=0?`<div class="alert warn"><span>💡</span><span>Preenche o Preço de Venda Esperado no separador Projeto ou Venda para activar esta calculadora.</span></div>`:`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div class="kpi kpi-r" style="border-color:var(--good)">
+        <div class="kpi-label">Conservador (65%)</div>
+        <div class="kpi-val" style="color:var(--good);font-size:clamp(13px,3vw,18px)">${eur(Math.max(0,rule65))}</div>
+        <div class="kpi-sub">Margem extra segurança</div>
+      </div>
+      <div class="kpi kpi-a" style="border-color:var(--accent);border-width:2px">
+        <div class="kpi-label">Standard (70%) ★</div>
+        <div class="kpi-val c-a" style="font-size:clamp(13px,3vw,18px)">${eur(Math.max(0,rule70))}</div>
+        <div class="kpi-sub">Regra gold standard</div>
+      </div>
+      <div class="kpi kpi-b">
+        <div class="kpi-label">Agressivo (75%)</div>
+        <div class="kpi-val c-b" style="font-size:clamp(13px,3vw,18px)">${eur(Math.max(0,rule75))}</div>
+        <div class="kpi-sub">Mercado competitivo</div>
+      </div>
+    </div>
+    <div class="card" style="background:var(--surface);margin:0">
+      <div class="card-title">Análise do teu Negócio</div>
+      ${mt('ARV (valor pós-obra estimado)',eur(arv))}
+      ${mt('Obras previstas',eur(obras),'c-r')}
+      ${mt('Impostos de aquisição (auto)',eur(impostos),'c-r')}
+      ${mt('Teu preço de compra',eur(currentPrice),currentPrice>0?(isGoodDeal?'c-g':'c-r'):'c-b')}
+      ${currentPrice>0?mt('Margem de segurança vs regra 70%',pct(safetyMargin),safetyMargin>=5?'c-g':'c-r'):''}
+      ${currentPrice>0?`<div class="alert ${isGoodDeal?'ok':'err'}" style="margin-top:10px">
+        <span>${isGoodDeal?'✅':'🚨'}</span>
+        <span>${isGoodDeal
+          ?'Negócio dentro da regra dos 70% — margem de segurança adequada.'
+          :`Preço acima do máximo recomendado pela regra dos 70%. Risco elevado de margem insuficiente.`}
+        </span>
+      </div>`:''}
+    </div>`}
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  TAB: SIMULADOR DE CENÁRIOS
+// ─────────────────────────────────────────────────────────────
+function tabCenarios(p,a){
+  if(!a||!p.purchasePrice){
+    return`<div class="card"><div class="alert warn"><span>💡</span><span>Preenche os dados do projeto (preço de compra, obras, venda) para activar o simulador.</span></div></div>`;
+  }
+  return`<div class="card">
+    <div class="card-title">🔀 Simulador de Cenários "E se..."</div>
+    <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      Ajusta os sliders para simular variações sem alterar os dados reais do projeto. O impacto no ROI e no lucro é calculado em tempo real.
+    </div>
+    <div class="fgrp" style="margin-bottom:18px">
+      <label class="flabel">Variação no preço de venda</label>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input type="range" id="sc_sale" min="-20" max="20" value="0" step="1" style="flex:1;accent-color:var(--accent)" oninput="updateCenarios()"/>
+        <span id="sc_sale_val" style="min-width:44px;text-align:right;font-weight:700;color:var(--accent)">0%</span>
+      </div>
+    </div>
+    <div class="fgrp" style="margin-bottom:18px">
+      <label class="flabel">Variação nos custos de obra</label>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input type="range" id="sc_obra" min="-20" max="40" value="0" step="1" style="flex:1;accent-color:var(--blue)" oninput="updateCenarios()"/>
+        <span id="sc_obra_val" style="min-width:44px;text-align:right;font-weight:700;color:var(--blue)">0%</span>
+      </div>
+    </div>
+    <div class="fgrp" style="margin-bottom:18px">
+      <label class="flabel">Duração adicional do projeto</label>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input type="range" id="sc_time" min="0" max="12" value="0" step="1" style="flex:1;accent-color:var(--purple)" oninput="updateCenarios()"/>
+        <span id="sc_time_val" style="min-width:60px;text-align:right;font-weight:700;color:var(--purple)">+0 meses</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="cenariosResult">
+    <div class="card-title">Resultado do Cenário</div>
+    <div id="cenariosBody"></div>
+  </div>`;
+}
+
+function bindCenarios(p,a){
+  updateCenarios();
+}
+
+function updateCenarios(){
+  const p=AP();const a=analyze(p);if(!a||!p)return;
+  const scSale=Number(q('sc_sale')?.value||0);
+  const scObra=Number(q('sc_obra')?.value||0);
+  const scTime=Number(q('sc_time')?.value||0);
+  if(q('sc_sale_val'))q('sc_sale_val').textContent=(scSale>=0?'+':'')+scSale+'%';
+  if(q('sc_obra_val'))q('sc_obra_val').textContent=(scObra>=0?'+':'')+scObra+'%';
+  if(q('sc_time_val'))q('sc_time_val').textContent='+'+(scTime)+' meses';
+
+  // Simulate changes
+  const newSale=a.saleRef*(1+scSale/100);
+  const newObra=a.wrkTotal*(1+scObra/100);
+  const newAmi=newSale*(Number(p.saleConfig?.brokerCommissionPct||5)/100);
+  const newSaleNet=newSale-newAmi-(a.saleOth||0);
+  const newCapTotal=a.capTotal-a.wrkTotal+newObra;
+  const newProfit=newSaleNet-newCapTotal;
+  const newTax=Math.max(0,newProfit)*(a.inclusionPct||0.5)*0.28;
+  const newNetProfit=newProfit-newTax;
+  const newRoi=newCapTotal>0?newProfit/newCapTotal*100:0;
+  const newRoiNet=newCapTotal>0?newNetProfit/newCapTotal*100:0;
+  // Extra holding cost for time
+  const hc=p.holdingConfig||{};
+  const imiMonth=r2(Math.max(Number(p.purchasePrice||0),Number(p.vpt||0))*(Number(hc.imiRate||0.003)/12));
+  const extraHolding=r2(scTime*(imiMonth+Number(hc.monthlyFixedCosts||0)));
+  const finalNetProfit=newNetProfit-extraHolding;
+  const finalRoiNet=newCapTotal>0?finalNetProfit/newCapTotal*100:0;
+
+  // Deltas vs base
+  const dProfit=newProfit-a.profit;
+  const dRoi=newRoi-a.roi;
+  const dNetProfit=finalNetProfit-a.netProfit;
+
+  const body=q('cenariosBody');if(!body)return;
+  const noChange=scSale===0&&scObra===0&&scTime===0;
+  if(noChange){body.innerHTML=`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Move os sliders para ver o impacto no teu projeto.</div>`;return;}
+
+  body.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="kpi kpi-g">
+        <div class="kpi-label">Lucro Bruto (cenário)</div>
+        <div class="kpi-val ${newProfit>=0?'c-g':'c-r'}">${eur(newProfit)}</div>
+        <div class="kpi-sub" style="color:${dProfit>=0?'var(--good)':'var(--bad)'}">${dProfit>=0?'▲':'▼'} ${eur(Math.abs(dProfit))} vs base</div>
+      </div>
+      <div class="kpi kpi-r">
+        <div class="kpi-label">Lucro Líquido (cenário)</div>
+        <div class="kpi-val ${finalNetProfit>=0?'c-g':'c-r'}">${eur(finalNetProfit)}</div>
+        <div class="kpi-sub" style="color:${dNetProfit>=0?'var(--good)':'var(--bad)'}">${dNetProfit>=0?'▲':'▼'} ${eur(Math.abs(dNetProfit))} vs base</div>
+      </div>
+    </div>
+    ${mt('Venda simulada',eur(newSale))}
+    ${mt('Obras simuladas',eur(newObra))}
+    ${mt('Custo adicional de posse',eur(extraHolding),'c-r')}
+    ${mt('ROI bruto (cenário)',pct(newRoi),newRoi>=0?'c-g':'c-r')}
+    ${mt('ROI líquido (cenário)',pct(finalRoiNet),finalRoiNet>=0?'c-g':'c-r')}
+    <div style="height:1px;background:var(--border);margin:10px 0"></div>
+    ${mt('ROI base (actual)',pct(a.roiNet),'c-b')}
+    <div class="alert ${finalRoiNet>=a.roiNet?'ok':'err'}" style="margin-top:10px">
+      <span>${finalRoiNet>=a.roiNet?'📈':'📉'}</span>
+      <span>Neste cenário o ROI líquido ${finalRoiNet>=a.roiNet?'<strong>melhora</strong>':'<strong>piora</strong>'} ${pct(Math.abs(finalRoiNet-a.roiNet))} em relação à estimativa actual.</span>
+    </div>`;
+}
+
 function bindInputs(p){
   const b=(id,g,s,parse=v=>v)=>{
     const el=q(id);if(!el)return;
@@ -1151,6 +1416,23 @@ function bindInputs(p){
   b('mk_garden',p=>p.marketConfig.hasGarden,(p,v)=>p.marketConfig.hasGarden=v);
   b('mk_terrace',p=>p.marketConfig.hasTerrace,(p,v)=>p.marketConfig.hasTerrace=v);
   b('mk_lift',p=>p.marketConfig.hasElevator,(p,v)=>p.marketConfig.hasElevator=v);
+}
+
+function bindFinanciamento(p){
+  const b=(id,s,parse=v=>v)=>{
+    const el=q(id);if(!el)return;
+    const h=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);renderDetail();};
+    el.removeEventListener('change',el._h);el._h=h;el.addEventListener('change',h);
+    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
+  };
+  b('fn_use',(p,v)=>p.financingConfig.useFinancing=v);
+  b('fn_loan',(p,v)=>p.financingConfig.loanAmount=Number(v||0),Number);
+  b('fn_rate',(p,v)=>p.financingConfig.interestRatePct=Number(v||3.5),Number);
+  b('fn_term',(p,v)=>p.financingConfig.termYears=Number(v||25),Number);
+  b('fn_fee',(p,v)=>p.financingConfig.entryFeePct=Number(v||1),Number);
+  b('hc_months',(p,v)=>p.holdingConfig.durationMonths=Number(v||6),Number);
+  b('hc_fixed',(p,v)=>p.holdingConfig.monthlyFixedCosts=Number(v||0),Number);
+  b('hc_imi',(p,v)=>p.holdingConfig.imiRate=Number(v||0.003),Number);
 }
 
 function renderLists(p,a){
@@ -1522,8 +1804,53 @@ function exportPDF(){
         ]);
       }
 
-      // ── 5. VENDA E RESULTADO ─────────────────────────────────
-      AT('5. Venda e Resultado',[
+      // ── 5. DETALHE COMPLETO DE OBRAS (linha a linha) ─────────
+      if(p.workCosts&&p.workCosts.length){
+        // Use a wider table with 5 columns for full detail
+        const wRows=p.workCosts.map(w=>{
+          const inv=p.investors.find(i=>i.id===w.investorId);
+          const nota=(w.notes||'').trim();
+          // Combine specialty + notes in one cell for readability
+          const desc=nota?w.specialty+' — '+nota:w.specialty||'—';
+          return[
+            desc,
+            w.supplier||'—',
+            inv?inv.name:'—',
+            w.date||'—',
+            eur(w.amount)
+          ];
+        });
+        // Add total row
+        wRows.push(['','','','TOTAL',eur(a.wrkTotal)]);
+        if(y>H-50){doc.addPage();y=20;}
+        doc.setFontSize(10.5);doc.setFont('helvetica','bold');doc.setTextColor(...TESSA_DARK);
+        doc.text('5. Detalhe Completo de Obras',M,y);y+=5;
+        doc.autoTable({
+          startY:y,
+          head:[['Especialidade / Notas','Fornecedor','Pago por','Data','Valor']],
+          body:wRows,
+          theme:'grid',
+          styles:{fontSize:8,cellPadding:3,font:'helvetica',textColor:BLACK,overflow:'linebreak'},
+          headStyles:{fillColor:TESSA_DARK,textColor:WHITE,fontStyle:'bold',fontSize:8},
+          alternateRowStyles:{fillColor:[248,250,252]},
+          columnStyles:{
+            0:{cellWidth:65},
+            1:{cellWidth:35},
+            2:{cellWidth:30},
+            3:{cellWidth:20},
+            4:{cellWidth:25,halign:'right',fontStyle:'bold'}
+          },
+          margin:{left:M,right:M},
+          didDrawPage:(data)=>{
+            // footer on new pages created by this table
+            addFooterPage(doc,W,H,M);
+          }
+        });
+        y=doc.lastAutoTable.finalY+10;
+      }
+
+      // ── 6. VENDA E RESULTADO ─────────────────────────────────
+      AT('6. Venda e Resultado',[
         ['Referência de venda',eur(a.saleRef)],
         ['Comissão mediação AMI',eur(a.ami)],
         ['Outros custos venda',eur(a.saleOth)],
@@ -1532,9 +1859,9 @@ function exportPDF(){
         ['Lucro bruto (venda líq. − capital)',eur(a.profit)],
       ]);
 
-      // ── 6. APURAMENTO FISCAL ─────────────────────────────────
+      // ── 7. APURAMENTO FISCAL ─────────────────────────────────
       const incPct=Math.round((a.inclusionPct||.5)*100);
-      AT('6. Apuramento Fiscal — IRS Cat. G (Art. 43.º CIRS)',[
+      AT('7. Apuramento Fiscal — IRS Cat. G (Art. 43.º CIRS)',[
         ['Lucro bruto',eur(a.profit)],
         [`Taxa de inclusão (${incPct}%) — base tributável`,eur(a.taxableGain)],
         ['Taxa autónoma mais-valias imobiliárias','28%'],
@@ -1545,9 +1872,9 @@ function exportPDF(){
         ['Nota','Isenções (reinvest. HPP, coef. desvalor.) não consideradas'],
       ]);
 
-      // ── 7. APURAMENTO POR INVESTIDOR ────────────────────────
+      // ── 8. APURAMENTO POR INVESTIDOR ────────────────────────
       if(a.invRes.length){
-        AT('7. Apuramento por Investidor',
+        AT('8. Apuramento por Investidor',
           a.invRes.map(inv=>[
             `${inv.name||'?'} (${inv.role} · ${pct(inv.profitSplitPct)} split)`,
             eur(inv.tot),eur(inv.gp),eur(inv.tax),eur(inv.net)
@@ -1556,9 +1883,9 @@ function exportPDF(){
         );
       }
 
-      // ── 8. ESTIMATIVA DE MERCADO ─────────────────────────────
+      // ── 9. ESTIMATIVA DE MERCADO ─────────────────────────────
       if(a.mkt){
-        AT('8. Estimativa de Mercado',[
+        AT('9. Estimativa de Mercado',[
           ['Preço base de mercado',eur(a.mkt.base)],
           ['Preço sugerido (ajustado)',eur(a.mkt.sug)],
           ['Faixa recomendada',`${eur(a.mkt.low)} – ${eur(a.mkt.high)}`],
@@ -1567,9 +1894,9 @@ function exportPDF(){
         ]);
       }
 
-      // ── 9. AVISOS / ALERTAS ──────────────────────────────────
+      // ── 10. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
-        AT('9. Alertas e Validações',
+        AT('10. Alertas e Validações',
           a.warns.map(w=>[w.t==='err'?'🔴 Erro':'🟡 Aviso', w.m])
         ,['Tipo','Descrição']);
       }
