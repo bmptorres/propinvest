@@ -2030,36 +2030,33 @@ function exportPDF(){
       const fc=p.financingConfig||{};
       const hc=p.holdingConfig||{};
       const useF=!!fc.useFinancing;
-      const ltvPct2=Number(p.purchasePrice||0)>0?((Number(fc.loanAmount||0)/Number(p.purchasePrice||0))*100).toFixed(1)+'%':'—';
+      const ltvPct2=Number(p.purchasePrice||0)>0?((Number(fc.loanAmount||0)/Number(p.purchasePrice||0))*100).toFixed(1)+'%':'n/a';
       const totalCost2=a.acqAll+a.wrkTotal+a.holdingTotal;
       const ownCap2=useF?Math.max(0,totalCost2-Number(fc.loanAmount||0)):totalCost2;
       const coC2=useF&&ownCap2>0?(a.netProfit/ownCap2*100):0;
+      // Build finRows without chaining filter on push()
       const finRows=[
-        ['Tipo de financiamento', useF?'Com crédito bancário':'Capital próprio (sem crédito)'],
+        ['Tipo de financiamento', useF?'Com credito bancario':'Capital proprio (sem credito)'],
       ];
       if(useF){
-        finRows.push(
-          ['Montante financiado',eur(a.loanAmt||0)],
-          ['Taxa de juro anual',pct(Number(fc.interestRatePct||3.5))],
-          ['Prazo',Number(fc.termYears||25)+' anos'],
-          ['LTV (Loan-to-Value)',ltvPct2],
-          ['Comissão de entrada',eur(a.entryFee||0)],
-          ['Prestação mensal estimada',eur(a.monthlyPayment||0)],
-          ['Capital próprio necessário',eur(ownCap2)],
-          ['Cash-on-Cash Return (ROI/cap. próprio)',pct(coC2)],
-        );
+        finRows.push(['Montante financiado',eur(a.loanAmt||0)]);
+        finRows.push(['Taxa de juro anual',pct(Number(fc.interestRatePct||3.5))]);
+        finRows.push(['Prazo',Number(fc.termYears||25)+' anos']);
+        finRows.push(['LTV (Loan-to-Value)',ltvPct2]);
+        finRows.push(['Comissao de entrada',eur(a.entryFee||0)]);
+        finRows.push(['Prestacao mensal estimada',eur(a.monthlyPayment||0)]);
+        finRows.push(['Capital proprio necessario',eur(ownCap2)]);
+        finRows.push(['Cash-on-Cash Return (ROI/cap. proprio)',pct(coC2)]);
       }
-      finRows.push(
-        ['──── Holding Costs ────',''],
-        ['Duração estimada do projeto',a.holdMonths+' meses'],
-        ['IMI proporcional',eur(a.imiHolding||0)],
-        ['Outros custos fixos acumulados',eur(a.fixedHolding||0)],
-        useF?['Juros financiamento durante obra',eur(a.financingInterestHolding||0)]:null,
-        ['TOTAL HOLDING COSTS',eur(a.holdingTotal||0)],
-      ).filter(Boolean);
+      finRows.push(['--- Holding Costs ---','']);
+      finRows.push(['Duracao estimada do projeto',a.holdMonths+' meses']);
+      finRows.push(['IMI proporcional',eur(a.imiHolding||0)]);
+      finRows.push(['Outros custos fixos acumulados',eur(a.fixedHolding||0)]);
+      if(useF) finRows.push(['Juros financiamento durante obra',eur(a.financingInterestHolding||0)]);
+      finRows.push(['TOTAL HOLDING COSTS',eur(a.holdingTotal||0)]);
       AT('10. Financiamento & Holding Costs',finRows);
 
-      // ── 11. CALCULADORA DE OFERTA MÁXIMA ─────────────────────
+      // ── 11. CALCULADORA DE OFERTA MAXIMA ─────────────────────
       const arvPdf=Number(p.expectedSalePrice||p.actualSalePrice||0);
       if(arvPdf>0){
         const obrasPdf=a.wrkTotal;
@@ -2069,29 +2066,29 @@ function exportPDF(){
         const r75=Math.max(0,arvPdf*0.75-obrasPdf-impostosPdf);
         const curPrice=Number(p.purchasePrice||0);
         const isGood=curPrice>0&&curPrice<=r70;
-        const margin=curPrice>0&&r70>0?((r70-curPrice)/r70*100).toFixed(1)+'%':'—';
-        AT('11. Calculadora de Oferta Máxima (Regra 70%)',[
-          ['ARV — Valor pós-obra estimado',eur(arvPdf)],
+        const margin=curPrice>0&&r70>0?((r70-curPrice)/r70*100).toFixed(1)+'%':'n/a';
+        AT('11. Calculadora de Oferta Maxima (Regra 70%)',[
+          ['ARV - Valor pos-obra estimado',eur(arvPdf)],
           ['Obras previstas',eur(obrasPdf)],
-          ['Impostos de aquisição (auto)',eur(impostosPdf)],
-          ['─── Preço Máximo Recomendado ───',''],
-          ['Conservador (ARV × 65%)',eur(r65)],
-          ['Standard (ARV × 70%) ★',eur(r70)],
-          ['Agressivo (ARV × 75%)',eur(r75)],
-          ['─── Avaliação do Negócio ───',''],
-          ['Preço de compra actual',eur(curPrice)],
-          ['Avaliação',isGood?'✅ Dentro da regra dos 70%':'🚨 Acima do limite recomendado'],
-          ['Margem de segurança vs regra 70%',margin],
+          ['Impostos de aquisicao (auto)',eur(impostosPdf)],
+          ['--- Preco Maximo Recomendado ---',''],
+          ['Conservador (ARV x 65%)',eur(r65)],
+          ['Standard (ARV x 70%)',eur(r70)],
+          ['Agressivo (ARV x 75%)',eur(r75)],
+          ['--- Avaliacao do Negocio ---',''],
+          ['Preco de compra actual',eur(curPrice)],
+          ['Avaliacao',isGood?'BOM NEGOCIO - dentro da regra 70%':'ATENCAO - acima do limite recomendado'],
+          ['Margem de seguranca vs regra 70%',margin],
         ]);
       }
 
-      // ── 12. CENÁRIOS ─────────────────────────────────────────
+      // ── 12. CENARIOS ─────────────────────────────────────────
       const scenPdf=[
-        {label:'Pessimista',saleD:-10,obraD:+20},
+        {label:'Pessimista',saleD:-10,obraD:20},
         {label:'Base (actual)',saleD:0,obraD:0},
-        {label:'Optimista',saleD:+10,obraD:-10},
-        {label:'Obras +30%',saleD:0,obraD:+30},
-        {label:'Venda −15%',saleD:-15,obraD:0},
+        {label:'Optimista',saleD:10,obraD:-10},
+        {label:'Obras +30%',saleD:0,obraD:30},
+        {label:'Venda -15%',saleD:-15,obraD:0},
       ].map(sc=>{
         const ns=a.saleRef*(1+sc.saleD/100);
         const no=a.wrkTotal*(1+sc.obraD/100);
@@ -2103,17 +2100,17 @@ function exportPDF(){
         const nliq=np-nt;
         const nroi=nc2>0?nliq/nc2*100:0;
         return[
-          sc.label+'  (venda '+(sc.saleD>=0?'+':'')+sc.saleD+'%, obras '+(sc.obraD>=0?'+':'')+sc.obraD+'%)',
+          sc.label+' (venda '+(sc.saleD>=0?'+':'')+sc.saleD+'%, obras '+(sc.obraD>=0?'+':'')+sc.obraD+'%)',
           eur(np), eur(nliq), pct(nroi)
         ];
       });
-      AT('12. Análise de Cenários',scenPdf,['Cenário','Lucro Bruto','Lucro Líquido','ROI Líq.']);
+      AT('12. Analise de Cenarios',scenPdf,['Cenario','Lucro Bruto','Lucro Liquido','ROI Liq.']);
 
       // ── 13. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
-        AT('13. Alertas e Validações',
-          a.warns.map(w=>[w.t==='err'?'🔴 Erro':'🟡 Aviso', w.m])
-        ,['Tipo','Descrição']);
+        AT('13. Alertas e Validacoes',
+          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^ -]/g,'?')])
+        ,['Tipo','Descricao']);
       }
     }
 
