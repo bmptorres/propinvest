@@ -328,7 +328,7 @@
     .or-divider::before,.or-divider::after{content:'';flex:1;height:1px;background:var(--border);}
     .btn-google{width:100%;padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .18s;}
     .btn-google:hover{background:var(--card2);}
-    .sync-badge{position:fixed;top:calc(10px + var(--safe-t));right:12px;z-index:45;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;background:var(--good-dim);color:var(--good);border:1px solid rgba(16,185,129,.2);}
+    .sync-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:700;background:var(--good-dim);color:var(--good);border:1px solid rgba(16,185,129,.2);}
     .sync-badge.syncing{background:var(--accent-dim);color:var(--accent);}
     .sync-badge.offline{background:var(--bad-dim);color:var(--bad);}
   </style>
@@ -395,11 +395,6 @@
   </div>
 </div>
 
-<!-- Sync badge -->
-<div class="sync-badge" id="syncBadge" style="display:none">
-  <span id="syncDot">●</span><span id="syncLabel">Sincronizado</span>
-</div>
-
 <div id="app">
   <div class="topbar">
     <div class="logo">
@@ -420,12 +415,12 @@
     </div>
     <div class="page" id="page-detail">
       <div class="sub-tabs" id="subTabs">
-        <button class="sub-tab active" data-sub="projeto">Projeto</button>
-        <button class="sub-tab" data-sub="aquisicao">Aquisição</button>
-        <button class="sub-tab" data-sub="obras">Obras</button>
-        <button class="sub-tab" data-sub="venda">Venda</button>
-        <button class="sub-tab" data-sub="fiscal">Fiscal</button>
-        <button class="sub-tab" data-sub="mercado">Mercado</button>
+        <button class="sub-tab active" data-sub="projeto">📋 Projeto</button>
+        <button class="sub-tab" data-sub="aquisicao">🏠 Aquisição</button>
+        <button class="sub-tab" data-sub="obras">🔨 Obras</button>
+        <button class="sub-tab" data-sub="venda">💵 Venda</button>
+        <button class="sub-tab" data-sub="fiscal">📑 Fiscal</button>
+        <button class="sub-tab" data-sub="mercado">📈 Mercado</button>
         <button class="sub-tab" data-sub="financiamento">💰 Financ.</button>
         <button class="sub-tab" data-sub="oferta">🎯 Oferta</button>
         <button class="sub-tab" data-sub="cenarios">🔀 Cenários</button>
@@ -670,9 +665,9 @@ function setSyncStatus(status){
   const b=document.getElementById('syncBadge');
   const l=document.getElementById('syncLabel');
   if(!b||!l)return;
-  b.style.display='flex';
+  b.style.display='inline-flex';
   b.className='sync-badge'+(status==='syncing'?' syncing':status==='offline'?' offline':'');
-  l.textContent=status==='syncing'?'A sincronizar…':status==='offline'?'Offline':'Sincronizado';
+  l.textContent=status==='syncing'?'Sync…':status==='offline'?'Offline':'✓';
 }
 function AP(){return ST.projects.find(p=>p.id===ST.activeProjectId)||null;}
 function setP(p){ST.projects=ST.projects.map(x=>x.id===p.id?p:x);save();}
@@ -2189,15 +2184,18 @@ function showLoginScreen(){
 function showApp(user){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').style.display='flex';
-  // Add logout + user indicator to topbar
   const acts=q('topActs');
   if(acts){
     const initials=(user.displayName||user.email||'U').charAt(0).toUpperCase();
+    // Sync badge is now INSIDE the topbar-actions, left of the user avatar
     acts.innerHTML=`
       <div style="display:flex;align-items:center;gap:8px">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent)">${initials}</div>
-        <button class="btn btn-ghost btn-sm" id="btnDel" style="display:none" onclick="deleteActiveProject()">🗑️</button>
-        <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Sair" style="padding:6px 8px">⎋</button>
+        <div class="sync-badge" id="syncBadge" style="display:none">
+          <span id="syncDot">●</span><span id="syncLabel">Sincronizado</span>
+        </div>
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent)" title="${user.displayName||user.email||''}">${initials}</div>
+        <button class="btn btn-ghost btn-sm" id="btnDel" style="display:none" onclick="deleteActiveProject()" title="Apagar projeto">🗑️</button>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Terminar sessão" style="padding:6px 9px;font-size:16px">↪</button>
       </div>`;
   }
 }
