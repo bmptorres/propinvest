@@ -424,6 +424,7 @@
         <button class="sub-tab" data-sub="financiamento">💰 Financ.</button>
         <button class="sub-tab" data-sub="oferta">🎯 Oferta</button>
         <button class="sub-tab" data-sub="cenarios">🔀 Cenários</button>
+        <button class="sub-tab" data-sub="btlconfig">🏡 Buy-to-Let</button>
       </div>
       <div id="detailContent"></div>
     </div>
@@ -440,6 +441,8 @@
     <button class="nav-btn" data-page="detail"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg></span><span>Detalhe</span></button>
     <button class="nav-btn" data-page="investors"><span class="ni">👥</span><span>Invest.</span></button>
     <button class="nav-btn" data-page="report"><span class="ni">📄</span><span>Relatório</span></button>
+    <button class="nav-btn" data-page="btl"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>Renda</span></button>
+    <button class="nav-btn" data-page="compare"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span>Comparar</span></button>
   </nav>
 </div>
 
@@ -1084,6 +1087,7 @@ function renderDetail(){
   else if(curSub==='financiamento'){c.innerHTML=tabFinanciamento(p,a);bindFinanciamento(p);}
   else if(curSub==='oferta')c.innerHTML=tabOferta(p,a);
   else if(curSub==='cenarios'){c.innerHTML=tabCenarios(p,a);bindCenarios(p,a);}
+  else if(curSub==='btlconfig'){c.innerHTML=tabBtlConfig(p,a);bindBtlConfig(p);}
   bindInputs(p);
   renderLists(p,a);
 }
@@ -1493,6 +1497,252 @@ function updateCenarios(){
       <span>Neste cenário o ROI líquido ${finalRoiNet>=a.roiNet?'<strong>melhora</strong>':'<strong>piora</strong>'} ${pct(Math.abs(finalRoiNet-a.roiNet))} em relação à estimativa actual.</span>
     </div>`;
 }
+
+
+// ─────────────────────────────────────────────────────────────
+//  TAB: BUY-TO-LET CONFIG
+// ─────────────────────────────────────────────────────────────
+function tabBtlConfig(p,a){
+  const bc=p.btlConfig||{};
+  const b=a?a.btl:null;
+  return`<div class="card">
+    <div class="card-title">🏡 Motor Buy-to-Let</div>
+    <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      Configura os parâmetros de arrendamento. Todos os cálculos actualizam automaticamente em tempo real.
+    </div>
+    <div class="form-grid">
+      ${fi('btl_rent','Renda mensal bruta (€)',bc.monthlyRent||p.expectedMonthlyRent||0,'number')}
+      ${fi('btl_occ','Taxa de ocupação (%)',bc.occupancyPct||95,'number')}
+      ${fi('btl_condo','Condomínio mensal (€)',bc.condominioMensal||0,'number')}
+      ${fi('btl_seg','Seguro mensal (€)',bc.seguroMensal||30,'number')}
+      ${fi('btl_maint','Manutenção anual (% do valor)',bc.manutencaoPct||1,'number')}
+      ${fi('btl_irs','Taxa IRS rendimentos prediais (%)',bc.irsRendimentosPct||28,'number')}
+      ${fi('btl_apprec','Valorização anual esperada (%)',bc.appreciationPct||2,'number')}
+      ${fi('btl_years','Período de análise (anos)',bc.analysisYears||10,'number')}
+    </div>
+  </div>
+  ${b&&b.btlRent>0?`
+  <div class="card">
+    <div class="card-title">Resultado Mensal</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+      <div style="background:var(--good-dim);border-radius:var(--radius-sm);padding:12px;text-align:center">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--good);margin-bottom:4px">Cashflow Líquido/mês</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(16px,4vw,24px);color:${b.cashflowMonthly>=0?'var(--good)':'var(--bad)'};word-break:break-all">${eur(b.cashflowMonthly)}</div>
+      </div>
+      <div style="background:var(--blue-dim);border-radius:var(--radius-sm);padding:12px;text-align:center">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--blue);margin-bottom:4px">Yield Líquido</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(16px,4vw,24px);color:var(--blue)">${pct(b.netYield)}</div>
+      </div>
+    </div>
+    ${mt('Renda efectiva ('+Math.round(b.btlOcc*100)+'% ocupação)',eur(b.grossRentMonthly),'c-g')}
+    ${mt('Despesas mensais totais',eur(b.expensesMonthly),'c-r')}
+    ${mt('Renda anual bruta',eur(b.grossRentAnnual),'c-g')}
+    ${mt('IRS sobre rendimentos',eur(b.taxRentAnnual),'c-r')}
+    ${mt('Cashflow anual líquido',eur(b.netCashflowAnnual),b.netCashflowAnnual>=0?'c-g':'c-r')}
+    <div style="height:1px;background:var(--border);margin:8px 0"></div>
+    ${mt('Yield bruto',pct(b.grossYield),'c-b')}
+    ${mt('Yield líquido',pct(b.netYield),'c-b')}
+    ${b.paybackYears?mt('Payback period',b.paybackYears.toFixed(1)+' anos','c-a'):''}
+  </div>
+  <div class="card">
+    <div class="card-title">Projecção ${p.btlConfig?.analysisYears||10} Anos</div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:300px">
+        <thead><tr style="background:var(--surface)">
+          <th style="padding:7px 9px;text-align:left;color:var(--text2);font-weight:700;border-bottom:1px solid var(--border)">Ano</th>
+          <th style="padding:7px 9px;text-align:right;color:var(--blue);font-weight:700;border-bottom:1px solid var(--border)">Valor Imóvel</th>
+          <th style="padding:7px 9px;text-align:right;color:var(--good);font-weight:700;border-bottom:1px solid var(--border)">CF Anual</th>
+          <th style="padding:7px 9px;text-align:right;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border)">CF Acumulado</th>
+        </tr></thead>
+        <tbody>${b.btlProjection.map((row,i)=>`<tr style="background:${i%2===0?'var(--card)':'var(--surface)'}">
+          <td style="padding:6px 9px;color:var(--text2);font-weight:700">Ano ${row.yr}</td>
+          <td style="padding:6px 9px;text-align:right;color:var(--blue)">${eur(row.propValue)}</td>
+          <td style="padding:6px 9px;text-align:right;color:${row.yrCf>=0?'var(--good)':'var(--bad)'}">${eur(row.yrCf)}</td>
+          <td style="padding:6px 9px;text-align:right;font-weight:700;color:${row.cumCashflow>=0?'var(--accent)':'var(--bad)'}">${eur(row.cumCashflow)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>
+  </div>`
+  :`<div class="card"><div class="alert warn"><span>💡</span><span>Preenche a renda mensal acima para activar a análise Buy-to-Let completa.</span></div></div>`}`;
+}
+
+function bindBtlConfig(p){
+  const b=(id,s,parse=v=>v)=>{
+    const el=q(id);if(!el)return;
+    const h=()=>{s(p,parse(el.value));setP(p);renderDetail();};
+    el.removeEventListener('change',el._h);el._h=h;el.addEventListener('change',h);
+    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
+  };
+  b('btl_rent',(p,v)=>{p.btlConfig.monthlyRent=Number(v||0);p.expectedMonthlyRent=Number(v||0);},Number);
+  b('btl_occ',(p,v)=>p.btlConfig.occupancyPct=Number(v||95),Number);
+  b('btl_condo',(p,v)=>p.btlConfig.condominioMensal=Number(v||0),Number);
+  b('btl_seg',(p,v)=>p.btlConfig.seguroMensal=Number(v||30),Number);
+  b('btl_maint',(p,v)=>p.btlConfig.manutencaoPct=Number(v||1),Number);
+  b('btl_irs',(p,v)=>p.btlConfig.irsRendimentosPct=Number(v||28),Number);
+  b('btl_apprec',(p,v)=>p.btlConfig.appreciationPct=Number(v||2),Number);
+  b('btl_years',(p,v)=>p.btlConfig.analysisYears=Number(v||10),Number);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PAGE: BUY-TO-LET FULL DASHBOARD
+// ─────────────────────────────────────────────────────────────
+function renderBtlPage(p,a){
+  const c=q('btlContent');
+  if(!p){
+    c.innerHTML=`<div class="empty"><div class="empty-icon">🏡</div><div class="empty-title">Seleciona um projeto</div></div>`;
+    return;
+  }
+  if(!a||!a.btl||a.btl.btlRent<=0){
+    c.innerHTML=`<div class="section-header"><div class="section-title">🏡 Buy-to-Let</div></div>
+    <div class="card"><div class="alert warn"><span>💡</span><span>Configura a renda no separador <strong>🏡 Buy-to-Let</strong> dentro do Detalhe do projeto.</span></div>
+    <div style="margin-top:14px"><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="nav('detail');setSub('btlconfig')">Configurar Buy-to-Let →</button></div></div>`;
+    return;
+  }
+  const b=a.btl;
+  c.innerHTML=`
+    <div class="section-header"><div class="section-title">🏡 Buy-to-Let</div><span class="badge btl">${p.strategy}</span></div>
+    <div class="hero-card">
+      <div class="label-xs" style="color:var(--good);margin-bottom:7px">Cashflow Mensal Líquido</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(28px,7vw,42px);color:${b.cashflowMonthly>=0?'var(--good)':'var(--bad)'};word-break:break-all">${eur(b.cashflowMonthly)}</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:6px">${eur(b.cashflowAnnual)}/ano · Yield líquido ${pct(b.netYield)}</div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi kpi-g"><div class="kpi-label">Yield Bruto</div><div class="kpi-val c-g">${pct(b.grossYield)}</div><div class="kpi-sub">Renda/Investimento</div></div>
+      <div class="kpi kpi-b"><div class="kpi-label">Yield Líquido</div><div class="kpi-val c-b">${pct(b.netYield)}</div><div class="kpi-sub">Pós-IRS e despesas</div></div>
+      <div class="kpi kpi-a"><div class="kpi-label">Renda Mensal</div><div class="kpi-val c-a">${eur(b.grossRentMonthly)}</div><div class="kpi-sub">${Math.round(b.btlOcc*100)}% ocupação</div></div>
+      <div class="kpi kpi-r"><div class="kpi-label">Payback</div><div class="kpi-val c-a">${b.paybackYears?b.paybackYears.toFixed(1)+' anos':'N/A'}</div><div class="kpi-sub">Recuperar capital</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Detalhe Mensal</div>
+      ${mt('Renda bruta mensal',eur(b.btlRent),'c-g')}
+      ${mt('Renda efectiva ('+Math.round(b.btlOcc*100)+'% ocupação)',eur(b.grossRentMonthly),'c-g')}
+      ${mt('Despesas mensais totais',eur(b.expensesMonthly),'c-r')}
+      ${mt('IRS mensal estimado',eur(r2(b.taxRentAnnual/12)),'c-r')}
+      <div style="height:1px;background:var(--border);margin:8px 0"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;flex-wrap:wrap;gap:8px">
+        <span style="font-weight:700">Cashflow líquido/mês</span>
+        <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(16px,4vw,22px);color:${b.cashflowMonthly>=0?'var(--good)':'var(--bad)'};word-break:break-all">${eur(b.cashflowMonthly)}</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Projecção ${p.btlConfig?.analysisYears||10} Anos</div></div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:300px">
+          <thead><tr style="background:var(--surface)">
+            <th style="padding:8px 9px;text-align:left;color:var(--text2);font-weight:700;border-bottom:1px solid var(--border)">Ano</th>
+            <th style="padding:8px 9px;text-align:right;color:var(--blue);font-weight:700;border-bottom:1px solid var(--border)">Valor Imóvel</th>
+            <th style="padding:8px 9px;text-align:right;color:var(--good);font-weight:700;border-bottom:1px solid var(--border)">CF Anual</th>
+            <th style="padding:8px 9px;text-align:right;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border)">CF Acumulado</th>
+          </tr></thead>
+          <tbody>${b.btlProjection.map((row,i)=>`<tr style="background:${i%2===0?'var(--card)':'var(--surface)'}">
+            <td style="padding:7px 9px;color:var(--text2);font-weight:700">Ano ${row.yr}</td>
+            <td style="padding:7px 9px;text-align:right;color:var(--blue)">${eur(row.propValue)}</td>
+            <td style="padding:7px 9px;text-align:right;color:${row.yrCf>=0?'var(--good)':'var(--bad)'}">${eur(row.yrCf)}</td>
+            <td style="padding:7px 9px;text-align:right;font-weight:700;color:${row.cumCashflow>=0?'var(--accent)':'var(--bad)'}">${eur(row.cumCashflow)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Configuração</div><button class="btn btn-primary btn-sm" onclick="nav('detail');setSub('btlconfig')">Editar</button></div>
+      ${mt('Renda mensal base',eur(b.btlRent))}
+      ${mt('Taxa de ocupação',Math.round(b.btlOcc*100)+'%')}
+      ${mt('IRS rendimentos prediais',pct(p.btlConfig?.irsRendimentosPct||28))}
+      ${mt('Valorização anual esperada',pct(p.btlConfig?.appreciationPct||2))}
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PAGE: COMPARAR PORTFOLIO
+// ─────────────────────────────────────────────────────────────
+function renderComparePage(){
+  const c=q('compareContent');
+  if(!ST.projects.length){
+    c.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Sem projetos</div><div class="empty-text">Cria pelo menos 2 projetos para comparar.</div></div>`;
+    return;
+  }
+  const projects=ST.projects.map(p=>({p,a:analyze(p)}));
+  const sortKey=ST.compareSort||'roi';
+  const sorted=[...projects].sort((x,y)=>{
+    if(sortKey==='roi')return(y.a?.roiNet||0)-(x.a?.roiNet||0);
+    if(sortKey==='lucro')return(y.a?.netProfit||0)-(x.a?.netProfit||0);
+    if(sortKey==='compra')return(y.p?.purchasePrice||0)-(x.p?.purchasePrice||0);
+    if(sortKey==='yield')return(y.a?.btl?.netYield||0)-(x.a?.btl?.netYield||0);
+    return 0;
+  });
+  const totalInv=projects.reduce((s,{a})=>s+(a?.capTotal||0),0);
+  const totalLucro=projects.reduce((s,{a})=>s+(a?.netProfit||0),0);
+  const avgRoi=projects.length?projects.reduce((s,{a})=>s+(a?.roiNet||0),0)/projects.length:0;
+  const best=projects.reduce((b,x)=>(x.a?.roiNet||0)>(b.a?.roiNet||0)?x:b,projects[0]);
+  c.innerHTML=`
+    <div class="section-header">
+      <div class="section-title">📊 Comparar</div>
+      <span class="badge flip">${projects.length} projeto${projects.length!==1?'s':''}</span>
+    </div>
+    <div class="kpi-grid" style="grid-template-columns:1fr 1fr">
+      <div class="kpi kpi-b"><div class="kpi-label">Capital Total</div><div class="kpi-val c-b">${eur(totalInv)}</div><div class="kpi-sub">${projects.length} projetos</div></div>
+      <div class="kpi kpi-g"><div class="kpi-label">Lucro Líquido Total</div><div class="kpi-val ${totalLucro>=0?'c-g':'c-r'}">${eur(totalLucro)}</div><div class="kpi-sub">ROI médio ${pct(avgRoi)}</div></div>
+    </div>
+    ${best?`<div class="card" style="background:linear-gradient(140deg,var(--card),rgba(245,158,11,0.06));border-color:rgba(245,158,11,0.2);margin-bottom:12px">
+      <div class="label-xs" style="color:var(--accent);margin-bottom:6px">⭐ Melhor ROI</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">${esc(best.p.name||'—')}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:3px">${esc(best.p.city||'—')} · <strong style="color:var(--accent)">${pct(best.a?.roiNet||0)}</strong> ROI líq.</div>
+    </div>`:''}
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-head">
+        <div class="card-title">Ordenar por</div>
+        <select class="fselect" style="width:auto;padding:6px 28px 6px 10px;font-size:12px" onchange="ST.compareSort=this.value;renderComparePage()">
+          <option value="roi" ${sortKey==='roi'?'selected':''}>ROI Líquido</option>
+          <option value="lucro" ${sortKey==='lucro'?'selected':''}>Lucro Líquido</option>
+          <option value="compra" ${sortKey==='compra'?'selected':''}>Preço Compra</option>
+          <option value="yield" ${sortKey==='yield'?'selected':''}>Yield BTL</option>
+        </select>
+      </div>
+    </div>
+    ${sorted.map(({p,a})=>{
+      const bc={Flip:'flip','Buy-to-let':'btl','BRRRR':'brrrr','Mista':'mista'}[p.strategy]||'flip';
+      const isActive=p.id===ST.activeProjectId;
+      const arv=Number(p.expectedSalePrice||p.actualSalePrice||0);
+      const impostos=a?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0;
+      const rule70=arv>0?Math.max(0,arv*0.70-(a?.wrkTotal||0)-impostos):0;
+      const isGood=Number(p.purchasePrice||0)>0&&rule70>0&&Number(p.purchasePrice||0)<=rule70;
+      const isBtl=p.strategy==='Buy-to-let'||p.strategy==='BRRRR';
+      return`<div class="card${isActive?' sel':''}" style="cursor:pointer;margin-bottom:10px${isActive?';border-color:var(--accent)':''}" onclick="ST.activeProjectId='${p.id}';save();nav('dashboard')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px">
+          <div style="min-width:0">
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name||'Sem nome')}</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(p.city||'—')} · ${p.areaM2||0}m²</div>
+          </div>
+          <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+            <span class="badge ${bc}">${esc(p.strategy)}</span>
+            ${isGood?'<span style="font-size:10px;font-weight:700;color:var(--good);background:var(--good-dim);padding:2px 7px;border-radius:999px">70% OK</span>':''}
+            ${isActive?'<span style="font-size:10px;font-weight:700;color:var(--accent)">● Ativo</span>':''}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+          <div style="background:var(--surface);border-radius:9px;padding:8px;text-align:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Compra</div>
+            <div style="font-size:11px;font-weight:700;word-break:break-all">${eur(p.purchasePrice)}</div>
+          </div>
+          <div style="background:var(--surface);border-radius:9px;padding:8px;text-align:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Lucro Líq.</div>
+            <div style="font-size:11px;font-weight:700;color:${(a?.netProfit||0)>=0?'var(--good)':'var(--bad)'};word-break:break-all">${eur(a?.netProfit||0)}</div>
+          </div>
+          <div style="background:var(--surface);border-radius:9px;padding:8px;text-align:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px">ROI Líq.</div>
+            <div style="font-size:11px;font-weight:700;color:${(a?.roiNet||0)>=0?'var(--good)':'var(--bad)'}">${pct(a?.roiNet||0)}</div>
+          </div>
+          <div style="background:var(--surface);border-radius:9px;padding:8px;text-align:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px">${isBtl?'Yield':'Venda'}</div>
+            <div style="font-size:11px;font-weight:700;color:var(--blue);word-break:break-all">${isBtl?pct(a?.btl?.netYield||0):eur(p.expectedSalePrice||p.actualSalePrice||0)}</div>
+          </div>
+        </div>
+        ${a?.warns&&a.warns.filter(w=>w.t==='err').length?`<div style="margin-top:8px;font-size:10px;color:var(--bad)">🚨 ${a.warns.filter(w=>w.t==='err').length} alerta(s) crítico(s)</div>`:''}
+      </div>`;
+    }).join('')}
+    <div style="padding:14px;text-align:center;font-size:11px;color:var(--muted)">Clica em qualquer projeto para o activar no Dashboard</div>`;
+}
+
 
 function bindInputs(p){
   const b=(id,g,s,parse=v=>v)=>{
