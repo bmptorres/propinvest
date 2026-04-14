@@ -554,6 +554,19 @@ const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 // ─────────────────────────────────────────────────────────────
 let CHS={};
 let ST={projects:[],activeProjectId:''};
+window._appEditing=false;
+var _appEditTimer=null;
+document.addEventListener('focusin',function(e){
+  if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')){
+    window._appEditing=true;clearTimeout(_appEditTimer);
+  }
+});
+document.addEventListener('focusout',function(e){
+  if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')){
+    clearTimeout(_appEditTimer);
+    _appEditTimer=setTimeout(function(){window._appEditing=false;},600);
+  }
+});
 let curSub='projeto',costMode=null,editInvId=null;
 
 function blank(){
@@ -649,10 +662,8 @@ function startSync(){
     }
     setSyncStatus('ok');
     // Re-render current page
-    // Guard: skip re-render if user is actively typing (prevents keyboard dismiss on mobile)
-    const _ae=document.activeElement;
-    const _typing=_ae&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA'||_ae.tagName==='SELECT');
-    if(!_typing){
+    // Guard: skip if user is actively editing a form field (prevents keyboard dismiss on mobile)
+    if(!window._appEditing){
       const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
       renderPage(activePage);
     }
@@ -1551,11 +1562,11 @@ function updateCenarios(){
 // ─────────────────────────────────────────────────────────────
 function tabBtlConfig(p,a){
   const bc=p.btlConfig||{};
-  const b=a?a.btl:null;
+  // FORM only — results live in #btlResultsSection (updated separately)
   return`<div class="card">
     <div class="card-title">🏡 Motor Buy-to-Let</div>
     <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:var(--text2)">
-      Configura os parâmetros de arrendamento. Todos os cálculos actualizam automaticamente em tempo real.
+      Preenche os campos e sai de cada campo para ver os resultados actualizados.
     </div>
     <div class="form-grid">
       ${fi('btl_rent','Renda mensal bruta (€)',bc.monthlyRent||p.expectedMonthlyRent||0,'number')}
@@ -1568,12 +1579,24 @@ function tabBtlConfig(p,a){
       ${fi('btl_years','Período de análise (anos)',bc.analysisYears||10,'number')}
     </div>
   </div>
-  ${b&&b.btlRent>0?`
+  <div id="btlResultsSection"></div>`;
+}
+
+function renderBtlResults(p){
+  const el=q('btlResultsSection');
+  if(!el)return;
+  const a=analyze(p);
+  const b=a?a.btl:null;
+  if(!b||b.btlRent<=0){
+    el.innerHTML=`<div class="card"><div class="alert warn"><span>💡</span><span>Preenche a renda mensal e sai do campo para activar a análise Buy-to-Let.</span></div></div>`;
+    return;
+  }
+  el.innerHTML=`
   <div class="card">
     <div class="card-title">Resultado Mensal</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
       <div style="background:var(--good-dim);border-radius:var(--radius-sm);padding:12px;text-align:center">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--good);margin-bottom:4px">Cashflow Líquido/mês</div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--good);margin-bottom:4px">Cashflow/mês</div>
         <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(16px,4vw,24px);color:${b.cashflowMonthly>=0?'var(--good)':'var(--bad)'};word-break:break-all">${eur(b.cashflowMonthly)}</div>
       </div>
       <div style="background:var(--blue-dim);border-radius:var(--radius-sm);padding:12px;text-align:center">
@@ -1609,28 +1632,31 @@ function tabBtlConfig(p,a){
         </tr>`).join('')}</tbody>
       </table>
     </div>
-  </div>`
-  :`<div class="card"><div class="alert warn"><span>💡</span><span>Preenche a renda mensal acima para activar a análise Buy-to-Let completa.</span></div></div>`}`;
+  </div>`;
 }
 
 function bindBtlConfig(p){
-  // input: save only (no re-render) - preserves keyboard focus on mobile
-  // change: save + re-render to show results
-  const onInput=(id,s,parse=v=>v)=>{
+  // CRITICAL: NEVER call renderDetail() — it destroys the form and closes the keyboard on mobile
+  // Use renderBtlResults() which ONLY updates the results section below the form
+  const bind=(id,setter,parse=v=>v)=>{
     const el=q(id);if(!el)return;
-    const hi=()=>{s(p,parse(el.value));setP(p);};
-    const hc=()=>{s(p,parse(el.value));setP(p);renderDetail();};
+    // On input: just update value silently
+    const hi=()=>{setter(p,parse(el.value));setP(p);};
+    // On change (blur/tab): update value + refresh results only (NOT the form)
+    const hc=()=>{setter(p,parse(el.value));setP(p);renderBtlResults(p);};
     el.removeEventListener('input',el._btli);el._btli=hi;el.addEventListener('input',hi);
     el.removeEventListener('change',el._btlc);el._btlc=hc;el.addEventListener('change',hc);
   };
-  onInput('btl_rent',(p,v)=>{p.btlConfig.monthlyRent=Number(v||0);p.expectedMonthlyRent=Number(v||0);},Number);
-  onInput('btl_occ',(p,v)=>p.btlConfig.occupancyPct=Number(v||95),Number);
-  onInput('btl_condo',(p,v)=>p.btlConfig.condominioMensal=Number(v||0),Number);
-  onInput('btl_seg',(p,v)=>p.btlConfig.seguroMensal=Number(v||30),Number);
-  onInput('btl_maint',(p,v)=>p.btlConfig.manutencaoPct=Number(v||1),Number);
-  onInput('btl_irs',(p,v)=>p.btlConfig.irsRendimentosPct=Number(v||28),Number);
-  onInput('btl_apprec',(p,v)=>p.btlConfig.appreciationPct=Number(v||2),Number);
-  onInput('btl_years',(p,v)=>p.btlConfig.analysisYears=Number(v||10),Number);
+  bind('btl_rent',(p,v)=>{p.btlConfig.monthlyRent=Number(v||0);p.expectedMonthlyRent=Number(v||0);},Number);
+  bind('btl_occ',(p,v)=>p.btlConfig.occupancyPct=Number(v||95),Number);
+  bind('btl_condo',(p,v)=>p.btlConfig.condominioMensal=Number(v||0),Number);
+  bind('btl_seg',(p,v)=>p.btlConfig.seguroMensal=Number(v||30),Number);
+  bind('btl_maint',(p,v)=>p.btlConfig.manutencaoPct=Number(v||1),Number);
+  bind('btl_irs',(p,v)=>p.btlConfig.irsRendimentosPct=Number(v||28),Number);
+  bind('btl_apprec',(p,v)=>p.btlConfig.appreciationPct=Number(v||2),Number);
+  bind('btl_years',(p,v)=>p.btlConfig.analysisYears=Number(v||10),Number);
+  // Show initial results (if data already exists)
+  renderBtlResults(p);
 }
 
 
