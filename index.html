@@ -615,7 +615,7 @@ function save(){
   localStorage.setItem(SK,JSON.stringify(ST));
   // Debounce cloud save (300ms)
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(()=>cloudSave(),300);
+  saveTimer=setTimeout(()=>cloudSave(),800);
 }
 
 async function cloudSave(){
@@ -649,8 +649,13 @@ function startSync(){
     }
     setSyncStatus('ok');
     // Re-render current page
-    const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
-    renderPage(activePage);
+    // Guard: skip re-render if user is actively typing (prevents keyboard dismiss on mobile)
+    const _ae=document.activeElement;
+    const _typing=_ae&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA'||_ae.tagName==='SELECT');
+    if(!_typing){
+      const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
+      renderPage(activePage);
+    }
   },err=>{
     setSyncStatus('offline');
     console.warn('Sync error',err);
