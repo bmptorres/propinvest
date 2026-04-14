@@ -26,8 +26,8 @@
       --shadow:0 4px 24px rgba(0,0,0,0.4);
     }
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-    html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;overscroll-behavior:none;-webkit-font-smoothing:antialiased;}
-    #app{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto;position:relative;overflow:hidden;}
+    html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;overscroll-behavior:none;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden;}
+    #app{display:flex;flex-direction:column;height:100dvh;width:100%;max-width:960px;margin:0 auto;position:relative;overflow:hidden;}
     .topbar{
       display:flex;align-items:center;justify-content:space-between;
       padding:12px 18px;padding-top:calc(12px + var(--safe-t));
@@ -55,13 +55,21 @@
       height:calc(var(--nav-h) + var(--safe-b));padding-bottom:var(--safe-b);
       background:rgba(17,18,24,0.95);backdrop-filter:blur(24px);
       border-top:1px solid var(--border);
-      display:flex;align-items:flex-start;padding-top:6px;z-index:50;
-      overflow:hidden;
+      display:flex;align-items:flex-start;padding-top:8px;z-index:50;
     }
-    .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 0;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:color 0.18s;font-family:'DM Sans',sans-serif;font-size:8px;font-weight:500;min-width:0;overflow:hidden;}
+    .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:color 0.18s;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;}
     .nav-btn .ni{font-size:21px;transition:transform 0.18s;display:flex;align-items:center;justify-content:center;height:24px;}
     .nav-btn.active{color:var(--accent);}
     .nav-btn.active .ni{transform:scale(1.12);}
+    @media (max-width:480px){
+      .page{padding:14px 12px;}
+      .topbar{padding-left:12px;padding-right:12px;}
+      .project-card{padding:14px;}
+      .pc-stats{grid-template-columns:repeat(3,minmax(0,1fr));}
+      .pc-stat .sv{font-size:12px;}
+      .nav-btn span:last-child{font-size:9px;}
+    }
+
     h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(24px,5vw,32px);line-height:1.15;}
     h2{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;}
     h3{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;}
@@ -303,15 +311,23 @@
     #loginScreen{
       position:fixed;inset:0;z-index:1000;
       background:var(--bg);
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      padding:24px;
+      display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+      padding:calc(12px + var(--safe-t)) 16px 24px;
+      overflow-y:auto;overflow-x:hidden;
     }
     #loginScreen.hidden{display:none;}
     .login-card{
-      width:100%;max-width:400px;
+      width:min(100%, 380px);
+      margin:24px auto;
       background:var(--card);border:1px solid var(--border2);
-      border-radius:28px;padding:32px 28px;
+      border-radius:24px;padding:24px 20px;
       box-shadow:0 24px 80px rgba(0,0,0,0.6);
+    }
+    @media (max-width:480px){
+      .login-card{padding:20px 16px;border-radius:22px;}
+      .login-title{font-size:20px;}
+      .login-sub{font-size:12px;margin-bottom:20px;}
+      .login-logo img{max-width:220px;height:auto;}
     }
     .login-logo{display:flex;justify-content:center;margin-bottom:28px;}
     .login-logo img{height:26px;width:auto;filter:brightness(1.8);}
@@ -568,7 +584,7 @@ function blank(){
     fiscalConfig:{capitalGainInclusionPct:50,manualTaxOverride:0,fiscalNotes:''},
     marketConfig:{baselineMarketPsm:0,comparableCount:0,marketTrendPct:0,conditionLevel:'medio',renovationLevel:'integral',hasPool:false,hasGarage:false,hasGarden:false,hasTerrace:false,hasElevator:false},
     financingConfig:{useFinancing:false,loanAmount:0,interestRatePct:3.5,termYears:25,entryFeePct:1},
-    holdingConfig:{durationMonths:6,monthlyFixedCosts:0,imiRate:0.003,includeInWaterfall:true},
+    holdingConfig:{durationMonths:6,monthlyFixedCosts:0,imiRate:0.003},
     btlConfig:{monthlyRent:0,occupancyPct:95,condominioMensal:0,seguroMensal:30,manutencaoPct:1,irsRendimentosPct:28,appreciationPct:2,analysisYears:10},
     investors:[],acquisitionEntries:[],workCosts:[],otherCosts:[]
   };
@@ -829,6 +845,40 @@ function analyze(p){
   p.workCosts.forEach(w=>{const s=(w.supplier||'').trim()||'Sem fornecedor';suppMap[s]=(suppMap[s]||0)+Number(w.amount||0);});
   const suppliers=Object.entries(suppMap).map(([n,t])=>({n,t})).filter(x=>x.t>0).sort((a,b)=>b.t-a.t).slice(0,10);
   const mkt=mktSug(p);
+  // ── BUY-TO-LET ENGINE ───────────────────────────────────
+  const bc={...(p.btlConfig||{})};
+  const btlRent=Number(bc.monthlyRent||p.expectedMonthlyRent||0);
+  const btlOcc=Math.max(0,Math.min(100,Number(bc.occupancyPct||95)))/100;
+  const condoM=Number(bc.condominioMensal||0);
+  const seguroM=Number(bc.seguroMensal||30);
+  const maintPct=Number(bc.manutencaoPct||1)/100;
+  const rentTaxPct=Number(bc.irsRendimentosPct||28)/100;
+  const apprecPct=Number(bc.appreciationPct||2)/100;
+  const years=Math.max(1,Math.min(30,Number(bc.analysisYears||10)));
+  const btlBaseValue=saleRef>0?saleRef:(Number(p.purchasePrice||0)+lg.imt+lg.is+lg.reg+lg.cert+acqManual+wrkTotal);
+  const maintenanceMonthly=r2((btlBaseValue*maintPct)/12);
+  const imiMonthly=r2(imiAnnual/12);
+  const debtMonthly=useFinancing?monthlyPayment:0;
+  const grossRentMonthly=r2(btlRent*btlOcc);
+  const expensesMonthly=r2(condoM+seguroM+maintenanceMonthly+imiMonthly+debtMonthly);
+  const grossRentAnnual=r2(grossRentMonthly*12);
+  const taxRentAnnual=r2(Math.max(grossRentAnnual-expensesMonthly*12,0)*rentTaxPct);
+  const netCashflowAnnual=r2(grossRentAnnual-(expensesMonthly*12)-taxRentAnnual);
+  const cashflowMonthly=r2(netCashflowAnnual/12);
+  const grossYield=btlBaseValue>0?r2((btlRent*12)/btlBaseValue*100):0;
+  const netYield=btlBaseValue>0?r2((netCashflowAnnual/btlBaseValue)*100):0;
+  const paybackYears=netCashflowAnnual>0?r2(capTotal/netCashflowAnnual):0;
+  const btlProjection=[];
+  if(btlRent>0){
+    let propValue=btlBaseValue;
+    let cumCashflow=0;
+    for(let yr=1;yr<=years;yr++){
+      propValue=r2(propValue*(1+apprecPct));
+      cumCashflow=r2(cumCashflow+netCashflowAnnual);
+      btlProjection.push({yr,propValue,yrCf:netCashflowAnnual,cumCashflow});
+    }
+  }
+  const btl={btlRent,btlOcc,maintenanceMonthly,imiMonthly,debtMonthly,grossRentMonthly,expensesMonthly,grossRentAnnual,taxRentAnnual,netCashflowAnnual,cashflowMonthly,grossYield,netYield,paybackYears,btlProjection};
   const warns=[];
   if(!p.city)warns.push({t:'warn',m:'Cidade não preenchida — mercado indisponível.'});
   if(!p.investors.length)warns.push({t:'warn',m:'Sem investidores registados.'});
@@ -837,39 +887,7 @@ function analyze(p){
   if(profit<0&&saleRef>0)warns.push({t:'err',m:'Venda líquida não cobre o capital investido!'});
   if(!mkt)warns.push({t:'warn',m:'Preenche €/m², área e comparáveis para estimativa de mercado.'});
   if(manualTax)warns.push({t:'warn',m:'Override manual de imposto ativo.'});
-  
-  // BTL ENGINE
-  const bc=p.btlConfig||{};
-  const btlRent=Number(bc.monthlyRent||p.expectedMonthlyRent||0);
-  const btlOcc=Number(bc.occupancyPct||95)/100;
-  const btlCondo=Number(bc.condominioMensal||0);
-  const btlSeguro=Number(bc.seguroMensal||30);
-  const btlManut=Number(bc.manutencaoPct||1)/100;
-  const btlIrs=Number(bc.irsRendimentosPct||28)/100;
-  const btlAppreciation=Number(bc.appreciationPct||2)/100;
-  const btlYears=Number(bc.analysisYears||10);
-  const grossRentMonthly=r2(btlRent*btlOcc);
-  const grossRentAnnual=r2(grossRentMonthly*12);
-  const imiAnnualBtl=r2(Math.max(Number(p.purchasePrice||0),Number(p.vpt||0))*Number((p.holdingConfig||{}).imiRate||0.003));
-  const manutAnnual=r2(acqAll*btlManut);
-  const expensesMonthly=r2(btlCondo+btlSeguro+(manutAnnual/12)+(imiAnnualBtl/12)+(useFinancing?monthlyPayment:0));
-  const cashflowMonthly=r2(grossRentMonthly-expensesMonthly);
-  const cashflowAnnual=r2(cashflowMonthly*12);
-  const taxRentAnnual=r2(grossRentAnnual*btlIrs);
-  const netCashflowAnnual=r2(cashflowAnnual-taxRentAnnual);
-  const grossYield=acqAll>0?r2(grossRentAnnual/acqAll*100):0;
-  const netYield=acqAll>0?r2(netCashflowAnnual/acqAll*100):0;
-  const paybackYears=netCashflowAnnual>0?r2(acqAll/netCashflowAnnual):null;
-  const btlProjection=[];
-  let cumCFbtl=0,propValBtl=acqAll;
-  for(let yr=1;yr<=btlYears;yr++){
-    propValBtl=r2(propValBtl*(1+btlAppreciation));
-    const yrCf=r2(netCashflowAnnual*(1+btlAppreciation*(yr-1)));
-    cumCFbtl=r2(cumCFbtl+yrCf);
-    btlProjection.push({yr,propValue:propValBtl,yrCf,cumCashflow:cumCFbtl});
-  }
-  const btl={grossRentMonthly,grossRentAnnual,expensesMonthly,cashflowMonthly,cashflowAnnual,taxRentAnnual,netCashflowAnnual,grossYield,netYield,paybackYears,btlProjection,imiAnnualBtl,manutAnnual,btlRent,btlOcc};
-return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,holdMonths,useFinancing,btl};
+  return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,holdMonths,useFinancing,btl};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1612,7 +1630,7 @@ function tabBtlConfig(p,a){
 function bindBtlConfig(p){
   const b=(id,s,parse=v=>v)=>{
     const el=q(id);if(!el)return;
-    const h=()=>{s(p,parse(el.value));setP(p);renderDetail();};
+    const h=()=>{if(!p.btlConfig)p.btlConfig={monthlyRent:0,occupancyPct:95,condominioMensal:0,seguroMensal:30,manutencaoPct:1,irsRendimentosPct:28,appreciationPct:2,analysisYears:10};s(p,parse(el.value));setP(p);renderDetail();renderBtlPage(p,analyze(p));};
     el.removeEventListener('change',el._h);el._h=h;el.addEventListener('change',h);
     el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
   };
@@ -2660,28 +2678,4 @@ function deleteActiveProject(){
 }
 </script>
 </body>
-</html>      // 13. BUY-TO-LET
-      if(a.btl&&a.btl.btlRent>0){
-        const btlb=a.btl;
-        AT('13. Buy-to-Let - Analise de Rendimento',[
-          ['Renda mensal bruta',eur(btlb.btlRent)],
-          ['Taxa de ocupacao',Math.round(btlb.btlOcc*100)+'%'],
-          ['Renda efectiva',eur(btlb.grossRentMonthly)],
-          ['Despesas mensais',eur(btlb.expensesMonthly)],
-          ['Cashflow mensal liquido',eur(btlb.cashflowMonthly)],
-          ['Renda anual bruta',eur(btlb.grossRentAnnual)],
-          ['IRS sobre rendimentos',eur(btlb.taxRentAnnual)],
-          ['Cashflow anual liquido',eur(btlb.netCashflowAnnual)],
-          ['Yield bruto',pct(btlb.grossYield)],
-          ['Yield liquido',pct(btlb.netYield)],
-          ['Payback period',btlb.paybackYears?btlb.paybackYears.toFixed(1)+' anos':'N/A'],
-        ]);
-        if(btlb.btlProjection&&btlb.btlProjection.length){
-          AT('14. Projectao Buy-to-Let',
-            btlb.btlProjection.map(function(row){return['Ano '+row.yr,eur(row.propValue),eur(row.yrCf),eur(row.cumCashflow)];}),
-            ['Ano','Valor Imovel','CF Anual','CF Acumulado']
-          );
-        }
-      }
-
-      
+</html>
