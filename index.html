@@ -2661,18 +2661,4 @@ function deleteActiveProject(){
 }
 </script>
 </body>
-</html>      // 13. BUY-TO-LET
-      if(a.btl&&a.btl.btlRent>0){
-        const btlb=a.btl;
-        AT('13. Buy-to-Let - Analise de Rendimento',[
-          ['Renda mensal bruta',eur(btlb.btlRent)],
-          ['Taxa de ocupacao',Math.round(btlb.btlOcc*100)+'%'],
-          ['Renda efectiva',eur(btlb.grossRentMonthly)],
-          ['Despesas mensais',eur(btlb.expensesMonthly)],
-          ['Cashflow mensal liquido',eur(btlb.cashflowMonthly)],
-          ['Renda anual bruta',eur(btlb.grossRentAnnual)],
-          ['IRS sobre rendimentos',eur(btlb.taxRentAnnual)],
-          ['Cashflow anual liquido',eur(btlb.netCashflowAnnual)],
-          ['Yield bruto',pct(btlb.grossYield)],
-          ['Yield liquido',pct(btlb.netYield)],
-          ['Payback period',btlb.paybackYears?btlb.paybackYears.toFixed(1)+' anos':'N/A
+</html>
