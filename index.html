@@ -26,8 +26,8 @@
       --shadow:0 4px 24px rgba(0,0,0,0.4);
     }
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-    html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;overscroll-behavior:none;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden;}
-    #app{display:flex;flex-direction:column;height:100dvh;width:100%;max-width:960px;margin:0 auto;position:relative;overflow:hidden;}
+    html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;overscroll-behavior:none;-webkit-font-smoothing:antialiased;}
+    #app{display:flex;flex-direction:column;height:100dvh;max-width:960px;margin:0 auto;position:relative;overflow:hidden;}
     .topbar{
       display:flex;align-items:center;justify-content:space-between;
       padding:12px 18px;padding-top:calc(12px + var(--safe-t));
@@ -55,21 +55,12 @@
       height:calc(var(--nav-h) + var(--safe-b));padding-bottom:var(--safe-b);
       background:rgba(17,18,24,0.95);backdrop-filter:blur(24px);
       border-top:1px solid var(--border);
-      display:flex;align-items:flex-start;padding-top:8px;z-index:50;
+      display:flex;align-items:flex-start;padding-top:6px;z-index:50;
     }
-    .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:color 0.18s;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;}
-    .nav-btn .ni{font-size:21px;transition:transform 0.18s;display:flex;align-items:center;justify-content:center;height:24px;}
+    .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 0;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:color 0.18s;font-family:'DM Sans',sans-serif;font-size:8px;font-weight:600;min-width:0;}
+    .nav-btn .ni{font-size:16px;transition:transform 0.18s;display:flex;align-items:center;justify-content:center;height:20px;}
     .nav-btn.active{color:var(--accent);}
     .nav-btn.active .ni{transform:scale(1.12);}
-    @media (max-width:480px){
-      .page{padding:14px 12px;}
-      .topbar{padding-left:12px;padding-right:12px;}
-      .project-card{padding:14px;}
-      .pc-stats{grid-template-columns:repeat(3,minmax(0,1fr));}
-      .pc-stat .sv{font-size:12px;}
-      .nav-btn span:last-child{font-size:9px;}
-    }
-
     h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(24px,5vw,32px);line-height:1.15;}
     h2{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;}
     h3{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;}
@@ -311,23 +302,15 @@
     #loginScreen{
       position:fixed;inset:0;z-index:1000;
       background:var(--bg);
-      display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-      padding:calc(12px + var(--safe-t)) 16px 24px;
-      overflow-y:auto;overflow-x:hidden;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:24px;
     }
     #loginScreen.hidden{display:none;}
     .login-card{
-      width:min(100%, 380px);
-      margin:24px auto;
+      width:100%;max-width:400px;
       background:var(--card);border:1px solid var(--border2);
-      border-radius:24px;padding:24px 20px;
+      border-radius:28px;padding:32px 28px;
       box-shadow:0 24px 80px rgba(0,0,0,0.6);
-    }
-    @media (max-width:480px){
-      .login-card{padding:20px 16px;border-radius:22px;}
-      .login-title{font-size:20px;}
-      .login-sub{font-size:12px;margin-bottom:20px;}
-      .login-logo img{max-width:220px;height:auto;}
     }
     .login-logo{display:flex;justify-content:center;margin-bottom:28px;}
     .login-logo img{height:26px;width:auto;filter:brightness(1.8);}
@@ -459,13 +442,13 @@
     </div>
   </div>
   <nav class="bottom-nav">
-    <button class="nav-btn active" data-page="portfolio"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><span>Port.</span></button>
-    <button class="nav-btn" data-page="dashboard"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></span><span>Dashboard</span></button>
-    <button class="nav-btn" data-page="detail"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg></span><span>Detalhe</span></button>
-    <button class="nav-btn" data-page="investors"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Invest.</span></button>
-    <button class="nav-btn" data-page="report"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Relat.</span></button>
-    <button class="nav-btn" data-page="btl"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>Renda</span></button>
-    <button class="nav-btn" data-page="compare"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span>Comparar</span></button>
+    <button class="nav-btn active" data-page="portfolio"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><span>Port.</span></button>
+    <button class="nav-btn" data-page="dashboard"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></span><span>Dashboard</span></button>
+    <button class="nav-btn" data-page="detail"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg></span><span>Detalhe</span></button>
+    <button class="nav-btn" data-page="investors"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Invest.</span></button>
+    <button class="nav-btn" data-page="report"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Relat.</span></button>
+    <button class="nav-btn" data-page="btl"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>Renda</span></button>
+    <button class="nav-btn" data-page="compare"><span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span>Comparar</span></button>
   </nav>
 </div>
 
@@ -584,7 +567,7 @@ function blank(){
     fiscalConfig:{capitalGainInclusionPct:50,manualTaxOverride:0,fiscalNotes:''},
     marketConfig:{baselineMarketPsm:0,comparableCount:0,marketTrendPct:0,conditionLevel:'medio',renovationLevel:'integral',hasPool:false,hasGarage:false,hasGarden:false,hasTerrace:false,hasElevator:false},
     financingConfig:{useFinancing:false,loanAmount:0,interestRatePct:3.5,termYears:25,entryFeePct:1},
-    holdingConfig:{durationMonths:6,monthlyFixedCosts:0,imiRate:0.003},
+    holdingConfig:{durationMonths:6,monthlyFixedCosts:0,imiRate:0.003,includeInWaterfall:true},
     btlConfig:{monthlyRent:0,occupancyPct:95,condominioMensal:0,seguroMensal:30,manutencaoPct:1,irsRendimentosPct:28,appreciationPct:2,analysisYears:10},
     investors:[],acquisitionEntries:[],workCosts:[],otherCosts:[]
   };
@@ -845,40 +828,6 @@ function analyze(p){
   p.workCosts.forEach(w=>{const s=(w.supplier||'').trim()||'Sem fornecedor';suppMap[s]=(suppMap[s]||0)+Number(w.amount||0);});
   const suppliers=Object.entries(suppMap).map(([n,t])=>({n,t})).filter(x=>x.t>0).sort((a,b)=>b.t-a.t).slice(0,10);
   const mkt=mktSug(p);
-  // ── BUY-TO-LET ENGINE ───────────────────────────────────
-  const bc={...(p.btlConfig||{})};
-  const btlRent=Number(bc.monthlyRent||p.expectedMonthlyRent||0);
-  const btlOcc=Math.max(0,Math.min(100,Number(bc.occupancyPct||95)))/100;
-  const condoM=Number(bc.condominioMensal||0);
-  const seguroM=Number(bc.seguroMensal||30);
-  const maintPct=Number(bc.manutencaoPct||1)/100;
-  const rentTaxPct=Number(bc.irsRendimentosPct||28)/100;
-  const apprecPct=Number(bc.appreciationPct||2)/100;
-  const years=Math.max(1,Math.min(30,Number(bc.analysisYears||10)));
-  const btlBaseValue=saleRef>0?saleRef:(Number(p.purchasePrice||0)+lg.imt+lg.is+lg.reg+lg.cert+acqManual+wrkTotal);
-  const maintenanceMonthly=r2((btlBaseValue*maintPct)/12);
-  const imiMonthly=r2(imiAnnual/12);
-  const debtMonthly=useFinancing?monthlyPayment:0;
-  const grossRentMonthly=r2(btlRent*btlOcc);
-  const expensesMonthly=r2(condoM+seguroM+maintenanceMonthly+imiMonthly+debtMonthly);
-  const grossRentAnnual=r2(grossRentMonthly*12);
-  const taxRentAnnual=r2(Math.max(grossRentAnnual-expensesMonthly*12,0)*rentTaxPct);
-  const netCashflowAnnual=r2(grossRentAnnual-(expensesMonthly*12)-taxRentAnnual);
-  const cashflowMonthly=r2(netCashflowAnnual/12);
-  const grossYield=btlBaseValue>0?r2((btlRent*12)/btlBaseValue*100):0;
-  const netYield=btlBaseValue>0?r2((netCashflowAnnual/btlBaseValue)*100):0;
-  const paybackYears=netCashflowAnnual>0?r2(capTotal/netCashflowAnnual):0;
-  const btlProjection=[];
-  if(btlRent>0){
-    let propValue=btlBaseValue;
-    let cumCashflow=0;
-    for(let yr=1;yr<=years;yr++){
-      propValue=r2(propValue*(1+apprecPct));
-      cumCashflow=r2(cumCashflow+netCashflowAnnual);
-      btlProjection.push({yr,propValue,yrCf:netCashflowAnnual,cumCashflow});
-    }
-  }
-  const btl={btlRent,btlOcc,maintenanceMonthly,imiMonthly,debtMonthly,grossRentMonthly,expensesMonthly,grossRentAnnual,taxRentAnnual,netCashflowAnnual,cashflowMonthly,grossYield,netYield,paybackYears,btlProjection};
   const warns=[];
   if(!p.city)warns.push({t:'warn',m:'Cidade não preenchida — mercado indisponível.'});
   if(!p.investors.length)warns.push({t:'warn',m:'Sem investidores registados.'});
@@ -887,7 +836,39 @@ function analyze(p){
   if(profit<0&&saleRef>0)warns.push({t:'err',m:'Venda líquida não cobre o capital investido!'});
   if(!mkt)warns.push({t:'warn',m:'Preenche €/m², área e comparáveis para estimativa de mercado.'});
   if(manualTax)warns.push({t:'warn',m:'Override manual de imposto ativo.'});
-  return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,holdMonths,useFinancing,btl};
+  
+  // BTL ENGINE
+  const bc=p.btlConfig||{};
+  const btlRent=Number(bc.monthlyRent||p.expectedMonthlyRent||0);
+  const btlOcc=Number(bc.occupancyPct||95)/100;
+  const btlCondo=Number(bc.condominioMensal||0);
+  const btlSeguro=Number(bc.seguroMensal||30);
+  const btlManut=Number(bc.manutencaoPct||1)/100;
+  const btlIrs=Number(bc.irsRendimentosPct||28)/100;
+  const btlAppreciation=Number(bc.appreciationPct||2)/100;
+  const btlYears=Number(bc.analysisYears||10);
+  const grossRentMonthly=r2(btlRent*btlOcc);
+  const grossRentAnnual=r2(grossRentMonthly*12);
+  const imiAnnualBtl=r2(Math.max(Number(p.purchasePrice||0),Number(p.vpt||0))*Number((p.holdingConfig||{}).imiRate||0.003));
+  const manutAnnual=r2(acqAll*btlManut);
+  const expensesMonthly=r2(btlCondo+btlSeguro+(manutAnnual/12)+(imiAnnualBtl/12)+(useFinancing?monthlyPayment:0));
+  const cashflowMonthly=r2(grossRentMonthly-expensesMonthly);
+  const cashflowAnnual=r2(cashflowMonthly*12);
+  const taxRentAnnual=r2(grossRentAnnual*btlIrs);
+  const netCashflowAnnual=r2(cashflowAnnual-taxRentAnnual);
+  const grossYield=acqAll>0?r2(grossRentAnnual/acqAll*100):0;
+  const netYield=acqAll>0?r2(netCashflowAnnual/acqAll*100):0;
+  const paybackYears=netCashflowAnnual>0?r2(acqAll/netCashflowAnnual):null;
+  const btlProjection=[];
+  let cumCFbtl=0,propValBtl=acqAll;
+  for(let yr=1;yr<=btlYears;yr++){
+    propValBtl=r2(propValBtl*(1+btlAppreciation));
+    const yrCf=r2(netCashflowAnnual*(1+btlAppreciation*(yr-1)));
+    cumCFbtl=r2(cumCFbtl+yrCf);
+    btlProjection.push({yr,propValue:propValBtl,yrCf,cumCashflow:cumCFbtl});
+  }
+  const btl={grossRentMonthly,grossRentAnnual,expensesMonthly,cashflowMonthly,cashflowAnnual,taxRentAnnual,netCashflowAnnual,grossYield,netYield,paybackYears,btlProjection,imiAnnualBtl,manutAnnual,btlRent,btlOcc};
+return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,holdMonths,useFinancing,btl};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1628,25 +1609,26 @@ function tabBtlConfig(p,a){
 }
 
 function bindBtlConfig(p){
-  const b=(id,s,parse=v=>v)=>{
+  // input: save only (no re-render) - preserves keyboard focus on mobile
+  // change: save + re-render to show results
+  const onInput=(id,s,parse=v=>v)=>{
     const el=q(id);if(!el)return;
-    const h=()=>{if(!p.btlConfig)p.btlConfig={monthlyRent:0,occupancyPct:95,condominioMensal:0,seguroMensal:30,manutencaoPct:1,irsRendimentosPct:28,appreciationPct:2,analysisYears:10};s(p,parse(el.value));setP(p);renderDetail();renderBtlPage(p,analyze(p));};
-    el.removeEventListener('change',el._h);el._h=h;el.addEventListener('change',h);
-    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
+    const hi=()=>{s(p,parse(el.value));setP(p);};
+    const hc=()=>{s(p,parse(el.value));setP(p);renderDetail();};
+    el.removeEventListener('input',el._btli);el._btli=hi;el.addEventListener('input',hi);
+    el.removeEventListener('change',el._btlc);el._btlc=hc;el.addEventListener('change',hc);
   };
-  b('btl_rent',(p,v)=>{p.btlConfig.monthlyRent=Number(v||0);p.expectedMonthlyRent=Number(v||0);},Number);
-  b('btl_occ',(p,v)=>p.btlConfig.occupancyPct=Number(v||95),Number);
-  b('btl_condo',(p,v)=>p.btlConfig.condominioMensal=Number(v||0),Number);
-  b('btl_seg',(p,v)=>p.btlConfig.seguroMensal=Number(v||30),Number);
-  b('btl_maint',(p,v)=>p.btlConfig.manutencaoPct=Number(v||1),Number);
-  b('btl_irs',(p,v)=>p.btlConfig.irsRendimentosPct=Number(v||28),Number);
-  b('btl_apprec',(p,v)=>p.btlConfig.appreciationPct=Number(v||2),Number);
-  b('btl_years',(p,v)=>p.btlConfig.analysisYears=Number(v||10),Number);
+  onInput('btl_rent',(p,v)=>{p.btlConfig.monthlyRent=Number(v||0);p.expectedMonthlyRent=Number(v||0);},Number);
+  onInput('btl_occ',(p,v)=>p.btlConfig.occupancyPct=Number(v||95),Number);
+  onInput('btl_condo',(p,v)=>p.btlConfig.condominioMensal=Number(v||0),Number);
+  onInput('btl_seg',(p,v)=>p.btlConfig.seguroMensal=Number(v||30),Number);
+  onInput('btl_maint',(p,v)=>p.btlConfig.manutencaoPct=Number(v||1),Number);
+  onInput('btl_irs',(p,v)=>p.btlConfig.irsRendimentosPct=Number(v||28),Number);
+  onInput('btl_apprec',(p,v)=>p.btlConfig.appreciationPct=Number(v||2),Number);
+  onInput('btl_years',(p,v)=>p.btlConfig.analysisYears=Number(v||10),Number);
 }
 
-// ─────────────────────────────────────────────────────────────
-//  PAGE: BUY-TO-LET FULL DASHBOARD
-// ─────────────────────────────────────────────────────────────
+
 function renderBtlPage(p,a){
   const c=q('btlContent');
   if(!p){
@@ -1859,9 +1841,10 @@ function bindInputs(p){
 function bindFinanciamento(p){
   const b=(id,s,parse=v=>v)=>{
     const el=q(id);if(!el)return;
-    const h=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);renderDetail();};
-    el.removeEventListener('change',el._h);el._h=h;el.addEventListener('change',h);
-    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
+    const hi=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);};
+    const hc=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);renderDetail();};
+    el.removeEventListener('input',el._fni);el._fni=hi;el.addEventListener('input',hi);
+    el.removeEventListener('change',el._fnc);el._fnc=hc;el.addEventListener('change',hc);    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
   };
   b('fn_use',(p,v)=>p.financingConfig.useFinancing=v);
   b('fn_loan',(p,v)=>p.financingConfig.loanAmount=Number(v||0),Number);
@@ -2678,4 +2661,18 @@ function deleteActiveProject(){
 }
 </script>
 </body>
-</html>
+</html>      // 13. BUY-TO-LET
+      if(a.btl&&a.btl.btlRent>0){
+        const btlb=a.btl;
+        AT('13. Buy-to-Let - Analise de Rendimento',[
+          ['Renda mensal bruta',eur(btlb.btlRent)],
+          ['Taxa de ocupacao',Math.round(btlb.btlOcc*100)+'%'],
+          ['Renda efectiva',eur(btlb.grossRentMonthly)],
+          ['Despesas mensais',eur(btlb.expensesMonthly)],
+          ['Cashflow mensal liquido',eur(btlb.cashflowMonthly)],
+          ['Renda anual bruta',eur(btlb.grossRentAnnual)],
+          ['IRS sobre rendimentos',eur(btlb.taxRentAnnual)],
+          ['Cashflow anual liquido',eur(btlb.netCashflowAnnual)],
+          ['Yield bruto',pct(btlb.grossYield)],
+          ['Yield liquido',pct(btlb.netYield)],
+          ['Payback period',btlb.paybackYears?btlb.paybackYears.toFixed(1)+' anos':'N/A
