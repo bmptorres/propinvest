@@ -331,7 +331,49 @@
     .sync-badge{position:fixed;top:calc(var(--topbar-h,52px) + var(--safe-t));left:16px;z-index:39;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:9px;font-weight:700;background:var(--good-dim);color:var(--good);border:1px solid rgba(16,185,129,.2);pointer-events:none;transition:opacity .3s;}
     .sync-badge.syncing{background:var(--accent-dim);color:var(--accent);}
     .sync-badge.offline{background:var(--bad-dim);color:var(--bad);}
-  </style>
+      /* ── SPRINT C — AI MODAL ──────────────────────────────────── */
+    .ai-modal-overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;}
+    .ai-modal{background:var(--card);border-radius:var(--radius) var(--radius) 0 0;width:100%;max-width:960px;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border2);}
+    .ai-modal-header{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+    .ai-modal-title{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;background:linear-gradient(135deg,var(--accent),#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .ai-modal-body{overflow-y:auto;padding:18px 20px;flex:1;-webkit-overflow-scrolling:touch;}
+    .ai-loading{text-align:center;padding:40px 20px;}
+    .ai-loading-dots{display:flex;justify-content:center;gap:8px;margin:20px 0;}
+    .ai-loading-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);animation:aiPulse 1.2s ease-in-out infinite;}
+    .ai-loading-dot:nth-child(2){animation-delay:.2s;background:#f97316;}
+    .ai-loading-dot:nth-child(3){animation-delay:.4s;background:var(--blue);}
+    @keyframes aiPulse{0%,80%,100%{transform:scale(0.7);opacity:.5;}40%{transform:scale(1);opacity:1;}}
+    .ai-loading-status{font-size:12px;color:var(--text2);margin-top:8px;min-height:20px;}
+    .ai-section{margin-bottom:18px;}
+    .ai-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px;}
+    .ai-valuation-hero{background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(249,115,22,.1));border:1px solid rgba(245,158,11,.25);border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:16px;}
+    .ai-val-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:8px;}
+    .ai-val-price{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(26px,6vw,36px);color:var(--text);word-break:break-all;}
+    .ai-val-range{font-size:11px;color:var(--text2);margin-top:6px;}
+    .ai-verdict{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:700;margin-top:10px;}
+    .ai-verdict.buy{background:rgba(16,185,129,.15);color:var(--good);border:1px solid rgba(16,185,129,.3);}
+    .ai-verdict.caution{background:rgba(245,158,11,.15);color:var(--accent);border:1px solid rgba(245,158,11,.3);}
+    .ai-verdict.sell{background:rgba(239,68,68,.15);color:var(--bad);border:1px solid rgba(239,68,68,.3);}
+    .ai-comp-card{background:var(--surface);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+    .ai-comp-info{min-width:0;flex:1;}
+    .ai-comp-title{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .ai-comp-meta{font-size:10px;color:var(--text2);margin-top:2px;}
+    .ai-comp-price{text-align:right;flex-shrink:0;}
+    .ai-comp-val{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--accent);}
+    .ai-comp-psm{font-size:10px;color:var(--text2);}
+    .ai-alert-item{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:8px;font-size:12px;line-height:1.5;}
+    .ai-alert-item.ok{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);}
+    .ai-alert-item.warning{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);}
+    .ai-alert-item.danger{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);}
+    .ai-exec{background:var(--surface);border-radius:var(--radius-sm);padding:16px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;}
+    .ai-share-link{background:var(--surface);border-radius:var(--radius-sm);padding:12px 14px;font-size:11px;font-family:monospace;color:var(--accent);word-break:break-all;cursor:pointer;border:1px dashed rgba(245,158,11,.3);}
+    .ai-step{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin-bottom:6px;}
+    .ai-step-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+    .ai-step-dot.done{background:var(--good);}
+    .ai-step-dot.active{background:var(--accent);animation:aiPulse 1s infinite;}
+    .ai-step-dot.pending{background:var(--muted);}
+
+    </style>
 </head>
 <body>
 
@@ -970,7 +1012,14 @@ function renderDash(p,a){
   const gc=a&&a.profit>=0?'c-g':'c-r',nc=a&&a.netFinal>=0?'c-g':'c-r';
   c.innerHTML=`
     <div class="hero-card">
-      <div class="label-xs" style="color:var(--accent);margin-bottom:7px">Projeto Ativo</div>
+      <div id="smartAlertsSection"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+        <div class="label-xs" style="color:var(--accent)">Projeto Ativo</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(249,115,22,.15));border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="openAIModal(AP(),analyze(AP()))">🤖 Analisar IA</button>
+          <button class="btn btn-sm" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);color:var(--blue);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="shareProject(AP(),analyze(AP()))">🔗 Partilhar</button>
+        </div>
+      </div>
       <div class="hero-title">${esc(p.name||'Projeto sem nome')}</div>
       <div class="hero-meta">${esc(p.city||'Sem cidade')}${p.parish?` · ${esc(p.parish)}`:''} · ${esc(p.strategy)}</div>
       <div class="tags">
@@ -1115,6 +1164,11 @@ function renderDash(p,a){
       </div>`;
     })()}
   `;
+  if(a){
+    const _sa=computeSmartAlerts(p,a);
+    const _saEl=document.getElementById('smartAlertsSection');
+    if(_saEl&&_sa.length)_saEl.innerHTML=_sa.map(al=>`<div class='alert ${al.type==='danger'?'err':'warn'}' style='margin-bottom:6px'><span>${al.icon}</span><span>${esc(al.msg)}</span></div>`).join('');
+  }
   requestAnimationFrame(()=>{if(a)renderDashCharts(a);});
 }
 function dc(id){if(CHS[id]){CHS[id].destroy();delete CHS[id];}}
@@ -2684,7 +2738,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('app').style.display='flex';
     q('topActs').innerHTML=`<button class="btn btn-ghost btn-sm" id="btnDel" style="display:none" onclick="deleteActiveProject()">🗑️</button>`;
-    nav('portfolio');
+    checkShareLink();nav('portfolio');
   }
 
   if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -2703,6 +2757,494 @@ function deleteActiveProject(){
   ST.activeProjectId=ST.projects[0]?.id||'';
   save();nav('portfolio');showToast('Projeto apagado');
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  SPRINT C1 — ASSISTENTE DE ANÁLISE COM IA (Claude + Web Search)
+// ═══════════════════════════════════════════════════════════════
+
+let _aiAnalysisCache={};  // cache por projeto id
+
+function openAIModal(p,a){
+  if(!p){showToast('Seleciona um projeto primeiro');return;}
+  const overlay=document.createElement('div');
+  overlay.className='ai-modal-overlay';
+  overlay.id='aiModalOverlay';
+  overlay.innerHTML=`
+    <div class="ai-modal">
+      <div class="ai-modal-header">
+        <div class="ai-modal-title">🤖 Análise com IA</div>
+        <button class="btn btn-ghost btn-sm" onclick="closeAIModal()" style="font-size:18px;padding:4px 8px">✕</button>
+      </div>
+      <div class="ai-modal-body" id="aiModalBody">
+        <div class="ai-loading">
+          <div style="font-size:32px;margin-bottom:12px">🔍</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:8px">A analisar o mercado...</div>
+          <div class="ai-loading-dots">
+            <div class="ai-loading-dot"></div>
+            <div class="ai-loading-dot"></div>
+            <div class="ai-loading-dot"></div>
+          </div>
+          <div id="aiSteps" style="max-width:280px;margin:0 auto;text-align:left">
+            <div class="ai-step"><div class="ai-step-dot active" id="s1dot"></div><span id="s1txt">A recolher dados do projeto...</span></div>
+            <div class="ai-step"><div class="ai-step-dot pending" id="s2dot"></div><span id="s2txt">A pesquisar imóveis comparáveis...</span></div>
+            <div class="ai-step"><div class="ai-step-dot pending" id="s3dot"></div><span id="s3txt">A calcular benchmarks de mercado...</span></div>
+            <div class="ai-step"><div class="ai-step-dot pending" id="s4dot"></div><span id="s4txt">A gerar análise e recomendações...</span></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)closeAIModal();});
+  // Check cache
+  const cacheKey=p.id+'_'+JSON.stringify({pp:p.purchasePrice,ep:p.expectedSalePrice,wt:a?.wrkTotal,city:p.city});
+  if(_aiAnalysisCache[cacheKey]){
+    renderAIResults(_aiAnalysisCache[cacheKey],p,a);
+    return;
+  }
+  runAIAnalysis(p,a,cacheKey);
+}
+
+function closeAIModal(){
+  const el=document.getElementById('aiModalOverlay');
+  if(el)el.remove();
+}
+
+function aiStep(n){
+  for(let i=1;i<=4;i++){
+    const dot=document.getElementById('s'+i+'dot');
+    if(!dot)continue;
+    if(i<n){dot.className='ai-step-dot done';}
+    else if(i===n){dot.className='ai-step-dot active';}
+    else{dot.className='ai-step-dot pending';}
+  }
+}
+
+async function runAIAnalysis(p,a,cacheKey){
+  try{
+    aiStep(2);
+    const projectInfo=buildProjectContext(p,a);
+    const prompt=buildAIPrompt(p,a,projectInfo);
+
+    aiStep(3);
+    const response=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:4000,
+        tools:[{'type':'web_search_20250305','name':'web_search'}],
+        system:`És um especialista sénior em investimento imobiliário no mercado português com 20 anos de experiência. Tens acesso a pesquisa web em tempo real. A tua missão é analisar projetos de investimento imobiliário usando dados reais de mercado de plataformas como Idealista.pt e Imovirtual.com. Sempre que relevante, pesquisa imóveis comparáveis na localização indicada para fundamentar a tua avaliação com dados concretos e actualizados. Responde SEMPRE em formato JSON válido, sem texto antes ou depois, sem blocos de código markdown.`,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+
+    aiStep(4);
+    const data=await response.json();
+
+    if(data.error){
+      throw new Error(data.error.message||'Erro na API');
+    }
+
+    // Extract text from response (may include tool_use blocks)
+    const textBlocks=data.content.filter(b=>b.type==='text');
+    if(!textBlocks.length){
+      throw new Error('Sem resposta de texto da IA');
+    }
+
+    const rawText=textBlocks.map(b=>b.text).join('');
+    let result;
+    try{
+      // Strip any potential markdown code blocks
+      const cleaned=rawText.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+      result=JSON.parse(cleaned);
+    }catch(e){
+      // Try to extract JSON from the text
+      const match=rawText.match(/\{[\s\S]*\}/);
+      if(match){
+        result=JSON.parse(match[0]);
+      }else{
+        throw new Error('Não foi possível parsear a resposta da IA');
+      }
+    }
+
+    _aiAnalysisCache[cacheKey]=result;
+    renderAIResults(result,p,a);
+
+  }catch(err){
+    const body=document.getElementById('aiModalBody');
+    if(body){
+      body.innerHTML=`<div style="text-align:center;padding:40px 20px">
+        <div style="font-size:40px;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:700;margin-bottom:8px">Erro na análise</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:20px">${esc(err.message)}</div>
+        <button class="btn btn-primary" onclick="runAIAnalysis(AP(),analyze(AP()),'${cacheKey}')">Tentar novamente</button>
+      </div>`;
+    }
+  }
+}
+
+function buildProjectContext(p,a){
+  const psm=a&&p.areaM2>0?Math.round(a.acqAll/p.areaM2):0;
+  const espSm=a&&p.areaM2>0?Math.round((p.expectedSalePrice||0)/p.areaM2):0;
+  const worksRatio=p.purchasePrice>0&&a?((a.wrkTotal/p.purchasePrice)*100).toFixed(1):null;
+  return{psm,espSm,worksRatio};
+}
+
+function buildAIPrompt(p,a,info){
+  return `Analisa este projeto de investimento imobiliário em Portugal e fornece uma avaliação completa com dados de mercado reais.
+
+DADOS DO PROJETO:
+- Nome: ${p.name||'Projeto sem nome'}
+- Localização: ${p.city||'N/A'}${p.parish?', '+p.parish:''}
+- Tipologia: ${p.typology||'N/A'}
+- Área: ${p.areaM2||0} m²
+- Estratégia: ${p.strategy}
+- Estado: ${p.purchaseDate?'Em curso':'Em análise'}
+- Data de compra: ${p.purchaseDate||'N/A'}
+- Data saída prevista: ${p.targetExitDate||'N/A'}
+
+FINANCEIROS:
+- Preço de compra: ${eur(p.purchasePrice)} (${info.psm?eur(info.psm)+'/m²':'N/A'})
+- Total obras: ${eur(a?a.wrkTotal:0)}${info.worksRatio?' ('+info.worksRatio+'% do preço de compra)':''}
+- Capital total investido: ${eur(a?a.capTotal:0)}
+- Preço de venda esperado: ${eur(p.expectedSalePrice)} (${info.espSm?eur(info.espSm)+'/m²':'N/A'})
+- Lucro bruto estimado: ${eur(a?a.profit:0)}
+- ROI bruto: ${a?pct(a.roi):'N/A'}
+- ROI líquido (pós-imposto): ${a?pct(a.roiNet):'N/A'}
+
+INSTRUÇÕES:
+1. Pesquisa no Idealista.pt e Imovirtual.com imóveis ${p.typology||'similares'} em ${p.city||'Portugal'} com área próxima de ${p.areaM2||0}m²
+2. Calcula o preço médio por m² na zona baseado nos resultados encontrados
+3. Avalia se o preço de venda esperado (${eur(p.expectedSalePrice)}) é realista vs mercado
+4. Compara o ROI com benchmarks do mercado PT (Flip: 15-25%, BTL yield: 4-7%)
+5. Identifica riscos e oportunidades específicos para este projeto
+
+RETORNA APENAS JSON com esta estrutura exacta:
+{
+  "marketValuation": <preço de venda que defines baseado em dados reais>,
+  "marketValuationMin": <limite inferior da estimativa>,
+  "marketValuationMax": <limite superior da estimativa>,
+  "marketPricePerM2": <€/m² médio da zona>,
+  "marketPricePerM2Min": <€/m² mínimo>,
+  "marketPricePerM2Max": <€/m² máximo>,
+  "comparables": [
+    {"title": "<morada/desc>", "price": <€>, "area": <m²>, "pricePerM2": <€/m²>, "source": "Idealista|Imovirtual|CasaSapo"}
+  ],
+  "priceVsMarket": <percentagem: diferença entre preço esperado e avaliação de mercado, negativo=abaixo>,
+  "roiAssessment": "<avaliação do ROI vs benchmark>",
+  "roiVerdict": "excellent|good|fair|poor",
+  "priceAssessment": "<avaliação do preço de venda vs mercado>",
+  "worksAssessment": "<avaliação do custo de obras>",
+  "alerts": [
+    {"level": "ok|warning|danger", "message": "<alerta específico>"}
+  ],
+  "risks": ["<risco 1>", "<risco 2>"],
+  "opportunities": ["<oportunidade 1>", "<oportunidade 2>"],
+  "executiveSummary": "<resumo executivo completo em português, 3-4 parágrafos, para partilhar com investidores>",
+  "recommendation": "comprar|manter|renegociar|evitar",
+  "recommendationReason": "<razão concisa da recomendação>",
+  "confidence": "alta|média|baixa",
+  "searchedSources": ["<fonte 1>", "<fonte 2>"]
+}`;
+}
+
+function renderAIResults(result,p,a){
+  const body=document.getElementById('aiModalBody');
+  if(!body)return;
+
+  const verdictClass={excellent:'buy',good:'buy',fair:'caution',poor:'sell'}[result.roiVerdict]||'caution';
+  const verdictLabel={excellent:'Excelente negócio',good:'Bom negócio',fair:'Negócio razoável',poor:'Negócio fraco'}[result.roiVerdict]||'A avaliar';
+  const verdictIcon={excellent:'🏆',good:'✅',fair:'⚠️',poor:'🚨'}[result.roiVerdict]||'📊';
+  const recIcon={comprar:'✅',manter:'⏸️',renegociar:'🔄',evitar:'❌'}[result.recommendation]||'📊';
+
+  const diffPct=result.priceVsMarket;
+  const diffStr=diffPct!=null?(diffPct>=0?'+':'')+diffPct.toFixed(1)+'% vs mercado':'';
+
+  body.innerHTML=`
+    <!-- AVALIAÇÃO DE MERCADO -->
+    <div class="ai-section">
+      <div class="ai-section-title">💰 Avaliação de Mercado (IA + Web Search)</div>
+      <div class="ai-valuation-hero">
+        <div class="ai-val-label">Valor de Mercado Estimado</div>
+        <div class="ai-val-price">${eur(result.marketValuation)}</div>
+        <div class="ai-val-range">Intervalo: ${eur(result.marketValuationMin)} – ${eur(result.marketValuationMax)}</div>
+        ${p.areaM2>0?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${eur(result.marketPricePerM2)}/m² · Zona: ${eur(result.marketPricePerM2Min)}–${eur(result.marketPricePerM2Max)}/m²</div>`:''}
+        ${diffStr?`<div style="margin-top:8px;font-size:12px;font-weight:700;color:${diffPct>=0?'var(--good)':'var(--bad)'}">${diffStr} face ao preço pedido</div>`:''}
+        <div class="ai-verdict ${verdictClass}">${verdictIcon} ${verdictLabel}</div>
+      </div>
+    </div>
+
+    <!-- RECOMENDAÇÃO -->
+    <div class="ai-section">
+      <div class="ai-section-title">🎯 Recomendação da IA</div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;display:flex;gap:12px;align-items:flex-start">
+        <div style="font-size:28px;flex-shrink:0">${recIcon}</div>
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;text-transform:capitalize;margin-bottom:4px">${result.recommendation||'N/A'}</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.5">${esc(result.recommendationReason||'')}</div>
+          <div style="margin-top:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)">Confiança: ${result.confidence||'N/A'}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPARÁVEIS -->
+    ${result.comparables&&result.comparables.length?`
+    <div class="ai-section">
+      <div class="ai-section-title">🏘️ Imóveis Comparáveis Encontrados</div>
+      ${result.comparables.map(c=>`<div class="ai-comp-card">
+        <div class="ai-comp-info">
+          <div class="ai-comp-title">${esc(c.title||'Imóvel comparável')}</div>
+          <div class="ai-comp-meta">${c.area?c.area+'m²':''} · ${esc(c.source||'Portal')}</div>
+        </div>
+        <div class="ai-comp-price">
+          <div class="ai-comp-val">${eur(c.price)}</div>
+          <div class="ai-comp-psm">${eur(c.pricePerM2)}/m²</div>
+        </div>
+      </div>`).join('')}
+      <div style="font-size:10px;color:var(--muted);margin-top:6px">
+        Fontes pesquisadas: ${(result.searchedSources||[]).join(', ')||'Idealista · Imovirtual'}
+      </div>
+    </div>`:''}
+
+    <!-- ALERTAS -->
+    ${result.alerts&&result.alerts.length?`
+    <div class="ai-section">
+      <div class="ai-section-title">⚡ Alertas Inteligentes</div>
+      ${result.alerts.map(al=>`<div class="ai-alert-item ${al.level}">
+        <span style="flex-shrink:0">${al.level==='danger'?'🚨':al.level==='warning'?'⚠️':'✅'}</span>
+        <span>${esc(al.message)}</span>
+      </div>`).join('')}
+    </div>`:''}
+
+    <!-- ROI ASSESSMENT -->
+    <div class="ai-section">
+      <div class="ai-section-title">📈 Avaliação Financeira</div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px">
+        <div style="font-size:12px;line-height:1.6;color:var(--text);margin-bottom:10px">${esc(result.roiAssessment||'')}</div>
+        ${result.priceAssessment?`<div style="font-size:12px;line-height:1.6;color:var(--text2);margin-bottom:8px">${esc(result.priceAssessment)}</div>`:''}
+        ${result.worksAssessment?`<div style="font-size:12px;line-height:1.6;color:var(--text2)">${esc(result.worksAssessment)}</div>`:''}
+      </div>
+    </div>
+
+    <!-- RISCOS E OPORTUNIDADES -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      ${result.risks&&result.risks.length?`<div>
+        <div class="ai-section-title" style="margin-bottom:8px">⚠️ Riscos</div>
+        ${result.risks.map(r=>`<div style="font-size:11px;color:var(--text2);padding:6px 0;border-bottom:1px solid var(--border);line-height:1.4">• ${esc(r)}</div>`).join('')}
+      </div>`:''}
+      ${result.opportunities&&result.opportunities.length?`<div>
+        <div class="ai-section-title" style="margin-bottom:8px">💡 Oportunidades</div>
+        ${result.opportunities.map(o=>`<div style="font-size:11px;color:var(--text2);padding:6px 0;border-bottom:1px solid var(--border);line-height:1.4">• ${esc(o)}</div>`).join('')}
+      </div>`:''}
+    </div>
+
+    <!-- RESUMO EXECUTIVO -->
+    <div class="ai-section">
+      <div class="ai-section-title">📄 Resumo Executivo para Investidores</div>
+      <div class="ai-exec">${esc(result.executiveSummary||'')}</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;justify-content:center"
+        onclick="navigator.clipboard.writeText(${JSON.stringify(result.executiveSummary||'').replace(/'/g,'&#39;')}).then(()=>showToast('Resumo copiado!'))">
+        📋 Copiar resumo executivo
+      </button>
+    </div>
+
+    <!-- REFAZER -->
+    <div style="text-align:center;padding:10px 0 20px">
+      <button class="btn btn-ghost btn-sm" onclick="(_aiAnalysisCache={},openAIModal(AP(),analyze(AP())))">
+        🔄 Nova análise (pesquisa actualizada)
+      </button>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SPRINT C3 — SMART ALERTS (alertas inteligentes em app)
+// ═══════════════════════════════════════════════════════════════
+
+function computeSmartAlerts(p,a){
+  if(!p||!a)return[];
+  const alerts=[];
+  const today=new Date();
+
+  // ROI check
+  if(a.roi>0&&a.roi<10) alerts.push({type:'danger',icon:'🚨',msg:`ROI bruto de ${pct(a.roi)} está abaixo de 10% — revê a estratégia ou o preço de compra.`});
+  else if(a.roi>=10&&a.roi<15) alerts.push({type:'warning',icon:'⚠️',msg:`ROI bruto de ${pct(a.roi)} está abaixo do benchmark de 15% para Flip em PT.`});
+
+  // Works ratio
+  if(p.purchasePrice>0&&a.wrkTotal>0){
+    const ratio=a.wrkTotal/p.purchasePrice*100;
+    if(ratio>50) alerts.push({type:'danger',icon:'🔨',msg:`Obras representam ${ratio.toFixed(0)}% do preço de compra — risco de exceder o orçamento.`});
+    else if(ratio>35) alerts.push({type:'warning',icon:'🔨',msg:`Obras representam ${ratio.toFixed(0)}% do preço de compra — acima do recomendado (35%).`});
+  }
+
+  // Exit date
+  if(p.targetExitDate){
+    const exit=new Date(p.targetExitDate);
+    const daysLeft=Math.round((exit-today)/(1000*60*60*24));
+    if(daysLeft<0) alerts.push({type:'danger',icon:'📅',msg:`Data de saída ultrapassada há ${Math.abs(daysLeft)} dias — actualiza o plano do projeto.`});
+    else if(daysLeft<30) alerts.push({type:'warning',icon:'📅',msg:`Saída prevista em ${daysLeft} dias — verifica se está tudo em ordem para a venda.`});
+  }
+
+  // Missing data
+  if(!p.expectedSalePrice) alerts.push({type:'warning',icon:'💡',msg:'Preço de venda esperado não definido — necessário para calcular ROI e lucro.'});
+  if(!p.areaM2) alerts.push({type:'warning',icon:'💡',msg:'Área do imóvel não definida — necessária para análise de mercado.'});
+  if(!p.typology) alerts.push({type:'warning',icon:'💡',msg:'Tipologia não definida — importante para pesquisa de comparáveis.'});
+  if(!p.city) alerts.push({type:'warning',icon:'💡',msg:'Cidade não definida — necessária para análise de mercado.'});
+
+  // Investors split
+  if(a.invRes.length&&Math.abs(a.splitSum-100)>0.5) alerts.push({type:'danger',icon:'👥',msg:`Split de lucro dos investidores soma ${pct(a.splitSum)} — deve ser exactamente 100%.`});
+
+  // 70% rule
+  if(p.purchasePrice>0&&p.expectedSalePrice>0&&a.wrkTotal>=0){
+    const impostos=a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert;
+    const rule70=p.expectedSalePrice*0.70-a.wrkTotal-impostos;
+    if(p.purchasePrice>rule70*1.1) alerts.push({type:'danger',icon:'🎯',msg:`Preço de compra está acima da Regra dos 70% — margem de segurança insuficiente.`});
+  }
+
+  // No works but has purchase price (might be missing data)
+  if(p.purchasePrice>0&&a.wrkTotal===0&&p.strategy!=='Buy-to-let') alerts.push({type:'warning',icon:'🔨',msg:'Sem custos de obra registados — adiciona os custos de remodelação no separador Obras.'});
+
+  return alerts;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SPRINT C4 — PARTILHA DE PROJETO (link para investidores)
+// ═══════════════════════════════════════════════════════════════
+
+async function shareProject(p,a){
+  if(!p){showToast('Seleciona um projeto');return;}
+  if(!DB||!CURRENT_USER){showToast('Necessário login para partilhar');return;}
+  try{
+    showToast('A gerar link...');
+    // Create public snapshot in Firestore
+    const shareId=Math.random().toString(36).substr(2,10)+Date.now().toString(36);
+    const shareData={
+      project:{
+        name:p.name,city:p.city,parish:p.parish,strategy:p.strategy,
+        typology:p.typology,areaM2:p.areaM2,purchasePrice:p.purchasePrice,
+        expectedSalePrice:p.expectedSalePrice,actualSalePrice:p.actualSalePrice,
+        targetExitDate:p.targetExitDate,notes:p.notes,
+      },
+      analysis:{
+        acqAll:a.acqAll,wrkTotal:a.wrkTotal,profit:a.profit,
+        netProfit:a.netProfit,roi:a.roi,roiNet:a.roiNet,
+        taxTotal:a.taxTotal,saleNet:a.saleNet,capTotal:a.capTotal,
+      },
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      expiresAt:new Date(Date.now()+30*24*60*60*1000), // 30 days
+      createdBy:CURRENT_USER.email,
+      shareId,
+    };
+    await DB.collection('shared_projects').doc(shareId).set(shareData);
+    const link=window.location.origin+window.location.pathname+'?share='+shareId;
+
+    // Show modal with link
+    const overlay=document.createElement('div');
+    overlay.className='ai-modal-overlay';
+    overlay.id='shareModalOverlay';
+    overlay.innerHTML=`
+      <div class="ai-modal" style="max-height:60dvh">
+        <div class="ai-modal-header">
+          <div class="ai-modal-title">🔗 Partilhar com Investidores</div>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('shareModalOverlay').remove()" style="font-size:18px;padding:4px 8px">✕</button>
+        </div>
+        <div class="ai-modal-body">
+          <div style="margin-bottom:14px;font-size:13px;color:var(--text2)">Link de acesso read-only ao projeto <strong style="color:var(--text)">${esc(p.name||'Projeto')}</strong>. Válido por <strong>30 dias</strong>.</div>
+          <div class="ai-share-link" id="shareLinkText" onclick="copyShareLink()">${esc(link)}</div>
+          <button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="copyShareLink()">
+            📋 Copiar link
+          </button>
+          <div style="margin-top:12px;font-size:10px;color:var(--muted);text-align:center">
+            O destinatário pode ver os dados do projeto mas não pode editar. O link expira em 30 dias.
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+    window._shareLink=link;
+  }catch(e){
+    showToast('Erro ao gerar link: '+e.message);
+  }
+}
+
+function copyShareLink(){
+  const link=window._shareLink||document.getElementById('shareLinkText')?.textContent;
+  if(link){
+    navigator.clipboard.writeText(link).then(()=>showToast('Link copiado!'));
+  }
+}
+
+// Handle incoming share link on page load
+function checkShareLink(){
+  const params=new URLSearchParams(window.location.search);
+  const shareId=params.get('share');
+  if(!shareId)return;
+  // Show shared project view
+  showSharedProjectView(shareId);
+}
+
+async function showSharedProjectView(shareId){
+  document.getElementById('loginScreen')?.classList.add('hidden');
+  document.getElementById('app').style.display='flex';
+  const scroll=document.querySelector('.scroll-area');
+  const pages=document.querySelectorAll('.page');
+  pages.forEach(pg=>pg.classList.remove('active'));
+  if(scroll){
+    scroll.innerHTML=`<div style="padding:20px;text-align:center">
+      <div style="font-size:32px;margin-bottom:12px">⏳</div>
+      <div>A carregar projeto partilhado...</div>
+    </div>`;
+  }
+  try{
+    const doc=await DB.collection('shared_projects').doc(shareId).get();
+    if(!doc.exists){
+      if(scroll)scroll.innerHTML=`<div style="padding:20px;text-align:center"><div style="font-size:32px">❌</div><div style="margin-top:12px;color:var(--text2)">Link inválido ou expirado.</div></div>`;
+      return;
+    }
+    const data=doc.data();
+    const p=data.project,an=data.analysis;
+    if(scroll)scroll.innerHTML=`
+      <div style="padding:20px">
+        <div style="background:var(--accent-dim);border:1px solid var(--accent-glow);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--accent);display:flex;gap:8px;align-items:center">
+          <span>🔗</span><span>Vista partilhada (read-only) · Partilhado por ${esc(data.createdBy||'—')}</span>
+        </div>
+        <div class="hero-card">
+          <div class="label-xs" style="color:var(--accent);margin-bottom:7px">Projeto Partilhado</div>
+          <div class="hero-title">${esc(p.name||'Projeto')}</div>
+          <div class="hero-meta">${esc(p.city||'—')}${p.parish?' · '+esc(p.parish):''} · ${esc(p.strategy)}</div>
+          <div class="tags">
+            ${p.typology?`<span class="tag">${esc(p.typology)}</span>`:''}
+            ${p.areaM2?`<span class="tag">${p.areaM2} m²</span>`:''}
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi kpi-a"><div class="kpi-label">Aquisição All-In</div><div class="kpi-val c-a">${eur(an.acqAll)}</div></div>
+          <div class="kpi kpi-b"><div class="kpi-label">Capital Investido</div><div class="kpi-val c-b">${eur(an.capTotal)}</div></div>
+          <div class="kpi kpi-g"><div class="kpi-label">Lucro Bruto</div><div class="kpi-val ${an.profit>=0?'c-g':'c-r'}">${eur(an.profit)}</div><div class="kpi-sub">ROI ${pct(an.roi)}</div></div>
+          <div class="kpi kpi-r"><div class="kpi-label">Lucro Líquido</div><div class="kpi-val ${an.netProfit>=0?'c-g':'c-r'}">${eur(an.netProfit)}</div><div class="kpi-sub">ROI líq. ${pct(an.roiNet)}</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Waterfall</div>
+          <div class="wf">
+            <div class="wf-row"><span class="wf-label">Venda líquida</span><span class="pill pos">${eur(an.saleNet)}</span></div>
+            <div class="wf-row"><span class="wf-label">Capital a reembolsar</span><span class="pill neg">${eur(-an.capTotal)}</span></div>
+            <div class="wf-row"><span class="wf-label">Lucro bruto</span><span class="pill ${an.profit>=0?'pos':'neg'}">${eur(an.profit)}</span></div>
+            <div class="wf-row"><span class="wf-label">Imposto mais-valias</span><span class="pill neg">${eur(-an.taxTotal)}</span></div>
+            <div class="wf-row" style="background:rgba(16,185,129,.07)"><span class="wf-label" style="font-weight:700">Lucro líquido pós-imposto</span><span class="pill pos">${eur(an.netProfit)}</span></div>
+          </div>
+        </div>
+        <div style="text-align:center;padding:20px;font-size:11px;color:var(--muted)">
+          Gerado pela PropInvest Pro · Tessa Advisors
+        </div>
+      </div>`;
+    // Hide nav for share view
+    document.querySelector('.bottom-nav')?.remove();
+    document.querySelector('.topbar')?.remove();
+  }catch(e){
+    if(scroll)scroll.innerHTML=`<div style="padding:20px;text-align:center"><div>Erro ao carregar: ${esc(e.message)}</div></div>`;
+  }
+}
+
+
 </script>
 </body>
 </html>
