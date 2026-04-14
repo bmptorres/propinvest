@@ -434,13 +434,19 @@
     <div class="page" id="page-report">
       <div id="repContent"></div>
     </div>
+    <div class="page" id="page-btl">
+      <div id="btlContent"></div>
+    </div>
+    <div class="page" id="page-compare">
+      <div id="compareContent"></div>
+    </div>
   </div>
   <nav class="bottom-nav">
-    <button class="nav-btn active" data-page="portfolio"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><span>Portefólio</span></button>
+    <button class="nav-btn active" data-page="portfolio"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><span>Port.</span></button>
     <button class="nav-btn" data-page="dashboard"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></span><span>Dashboard</span></button>
     <button class="nav-btn" data-page="detail"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg></span><span>Detalhe</span></button>
-    <button class="nav-btn" data-page="investors"><span class="ni">👥</span><span>Invest.</span></button>
-    <button class="nav-btn" data-page="report"><span class="ni">📄</span><span>Relatório</span></button>
+    <button class="nav-btn" data-page="investors"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Invest.</span></button>
+    <button class="nav-btn" data-page="report"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Relat.</span></button>
     <button class="nav-btn" data-page="btl"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span>Renda</span></button>
     <button class="nav-btn" data-page="compare"><span class="ni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span>Comparar</span></button>
   </nav>
@@ -855,6 +861,8 @@ function renderPage(page){
   else if(page==='detail')renderDetailPage(p,a);
   else if(page==='investors')renderInvPage(p,a);
   else if(page==='report')renderRepPage(p,a);
+  else if(page==='btl')renderBtlPage(p,a);
+  else if(page==='compare')renderComparePage();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2351,9 +2359,33 @@ function exportPDF(){
       });
       AT('12. Analise de Cenarios',scenPdf,['Cenario','Lucro Bruto','Lucro Liquido','ROI Liq.']);
 
-      // ── 13. AVISOS / ALERTAS ──────────────────────────────────
+      // 13. BUY-TO-LET
+      if(a.btl&&a.btl.btlRent>0){
+        const btlb=a.btl;
+        AT('13. Buy-to-Let - Analise de Rendimento',[
+          ['Renda mensal bruta',eur(btlb.btlRent)],
+          ['Taxa de ocupacao',Math.round(btlb.btlOcc*100)+'%'],
+          ['Renda efectiva (ocupacao)',eur(btlb.grossRentMonthly)],
+          ['Despesas mensais totais',eur(btlb.expensesMonthly)],
+          ['Cashflow mensal liquido',eur(btlb.cashflowMonthly)],
+          ['Renda anual bruta',eur(btlb.grossRentAnnual)],
+          ['IRS sobre rendimentos prediais',eur(btlb.taxRentAnnual)],
+          ['Cashflow anual liquido',eur(btlb.netCashflowAnnual)],
+          ['Yield bruto',pct(btlb.grossYield)],
+          ['Yield liquido (pos-IRS+despesas)',pct(btlb.netYield)],
+          ['Payback period',btlb.paybackYears?btlb.paybackYears.toFixed(1)+' anos':'N/A'],
+        ]);
+        if(btlb.btlProjection&&btlb.btlProjection.length){
+          AT('14. Projectao Buy-to-Let',
+            btlb.btlProjection.map(function(row){return['Ano '+row.yr,eur(row.propValue),eur(row.yrCf),eur(row.cumCashflow)];}),
+            ['Ano','Valor Imovel','CF Anual','CF Acumulado']
+          );
+        }
+      }
+
+      // 15. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
-        AT('13. Alertas e Validacoes',
+        AT('15. Alertas e Validacoes',
           a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^ -]/g,'?')])
         ,['Tipo','Descricao']);
       }
@@ -2593,4 +2625,28 @@ function deleteActiveProject(){
 }
 </script>
 </body>
-</html>
+</html>      // 13. BUY-TO-LET
+      if(a.btl&&a.btl.btlRent>0){
+        const btlb=a.btl;
+        AT('13. Buy-to-Let - Analise de Rendimento',[
+          ['Renda mensal bruta',eur(btlb.btlRent)],
+          ['Taxa de ocupacao',Math.round(btlb.btlOcc*100)+'%'],
+          ['Renda efectiva',eur(btlb.grossRentMonthly)],
+          ['Despesas mensais',eur(btlb.expensesMonthly)],
+          ['Cashflow mensal liquido',eur(btlb.cashflowMonthly)],
+          ['Renda anual bruta',eur(btlb.grossRentAnnual)],
+          ['IRS sobre rendimentos',eur(btlb.taxRentAnnual)],
+          ['Cashflow anual liquido',eur(btlb.netCashflowAnnual)],
+          ['Yield bruto',pct(btlb.grossYield)],
+          ['Yield liquido',pct(btlb.netYield)],
+          ['Payback period',btlb.paybackYears?btlb.paybackYears.toFixed(1)+' anos':'N/A'],
+        ]);
+        if(btlb.btlProjection&&btlb.btlProjection.length){
+          AT('14. Projectao Buy-to-Let',
+            btlb.btlProjection.map(function(row){return['Ano '+row.yr,eur(row.propValue),eur(row.yrCf),eur(row.cumCashflow)];}),
+            ['Ano','Valor Imovel','CF Anual','CF Acumulado']
+          );
+        }
+      }
+
+      
