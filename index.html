@@ -845,7 +845,7 @@ function nav(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   const pg=q(`page-${page}`);if(pg)pg.classList.add('active');
   document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
-  q('scrollArea').scrollTop=0;
+  const sa=q('scrollArea'); if(sa) sa.scrollTop=0; window.scrollTo({top:0,behavior:'auto'});
   renderPage(page);
   updateTopBar(page);
 }
@@ -2386,7 +2386,7 @@ function exportPDF(){
       // 15. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
         AT('15. Alertas e Validacoes',
-          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^ -]/g,'?')])
+          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^\x00-]/g,'?')])
         ,['Tipo','Descricao']);
       }
     }
@@ -2625,28 +2625,4 @@ function deleteActiveProject(){
 }
 </script>
 </body>
-</html>      // 13. BUY-TO-LET
-      if(a.btl&&a.btl.btlRent>0){
-        const btlb=a.btl;
-        AT('13. Buy-to-Let - Analise de Rendimento',[
-          ['Renda mensal bruta',eur(btlb.btlRent)],
-          ['Taxa de ocupacao',Math.round(btlb.btlOcc*100)+'%'],
-          ['Renda efectiva',eur(btlb.grossRentMonthly)],
-          ['Despesas mensais',eur(btlb.expensesMonthly)],
-          ['Cashflow mensal liquido',eur(btlb.cashflowMonthly)],
-          ['Renda anual bruta',eur(btlb.grossRentAnnual)],
-          ['IRS sobre rendimentos',eur(btlb.taxRentAnnual)],
-          ['Cashflow anual liquido',eur(btlb.netCashflowAnnual)],
-          ['Yield bruto',pct(btlb.grossYield)],
-          ['Yield liquido',pct(btlb.netYield)],
-          ['Payback period',btlb.paybackYears?btlb.paybackYears.toFixed(1)+' anos':'N/A'],
-        ]);
-        if(btlb.btlProjection&&btlb.btlProjection.length){
-          AT('14. Projectao Buy-to-Let',
-            btlb.btlProjection.map(function(row){return['Ano '+row.yr,eur(row.propValue),eur(row.yrCf),eur(row.cumCashflow)];}),
-            ['Ano','Valor Imovel','CF Anual','CF Acumulado']
-          );
-        }
-      }
-
-      
+</html>
