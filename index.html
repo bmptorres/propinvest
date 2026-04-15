@@ -2611,7 +2611,7 @@ function showApp(user){
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0">${initials}</div>
         <button class="btn btn-ghost btn-sm" id="btnDel" style="display:none;flex-shrink:0" onclick="deleteActiveProject()" title="Apagar">🗑️</button>
-        <button class="btn btn-ghost btn-sm" onclick="openApiKeyModal()" style="padding:6px 9px;font-size:14px;flex-shrink:0" title="Configurar IA">🔑</button><button class="btn btn-ghost btn-sm" onclick="doLogout()" style="padding:6px 9px;font-size:16px;flex-shrink:0" title="Sair">↪</button>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()" style="padding:6px 9px;font-size:16px;flex-shrink:0" title="Sair">↪</button>
       </div>`
   }
 }
@@ -2766,217 +2766,120 @@ function deleteActiveProject(){
 // ═══════════════════════════════════════════════════════════════
 //  SPRINT C — CONFIGURAÇÃO API KEY
 // ═══════════════════════════════════════════════════════════════
-function getApiKey(){return localStorage.getItem('tessa_ai_key')||'';}
-function setApiKey(k){localStorage.setItem('tessa_ai_key',k.trim());}
-
-function openApiKeyModal(){
-  const existing=document.getElementById('apiKeyModalOverlay');
-  if(existing)existing.remove();
-  const overlay=document.createElement('div');
-  overlay.className='ai-modal-overlay';
-  overlay.id='apiKeyModalOverlay';
-  const cur=getApiKey();
-  overlay.innerHTML=`
-    <div class="ai-modal" style="max-height:70dvh">
-      <div class="ai-modal-header">
-        <div class="ai-modal-title">🔑 Configurar API Key</div>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('apiKeyModalOverlay').remove()" style="font-size:18px;padding:4px 8px">✕</button>
-      </div>
-      <div class="ai-modal-body">
-        <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:12px;line-height:1.6;color:var(--text2)">
-          <div style="color:var(--accent);font-weight:700;margin-bottom:6px">Como obter a tua API Key da Anthropic</div>
-          1. Vai a <strong style="color:var(--text)">console.anthropic.com</strong><br>
-          2. Cria conta ou faz login<br>
-          3. Menu → "API Keys" → "Create Key"<br>
-          4. Copia a chave (começa com <code style="color:var(--accent)">sk-ant-</code>)<br>
-          5. Cola aqui em baixo — é guardada apenas no teu dispositivo
-        </div>
-        <div class="fgrp">
-          <label class="flabel">Anthropic API Key</label>
-          <input class="finput" id="apiKeyInput" type="password" placeholder="sk-ant-api03-..." value="${cur?'***guardada***':''}" style="font-family:monospace"/>
-        </div>
-        <div id="apiKeyStatus" style="font-size:11px;color:var(--text2);margin-top:8px;min-height:16px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">
-          <button class="btn btn-ghost btn-sm" onclick="testApiKey()" style="justify-content:center">🧪 Testar</button>
-          <button class="btn btn-primary btn-sm" onclick="saveApiKey()" style="justify-content:center">💾 Guardar</button>
-        </div>
-        ${cur?`<button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;justify-content:center;color:var(--bad)" onclick="localStorage.removeItem('tessa_ai_key');showToast('Chave removida');document.getElementById('apiKeyModalOverlay').remove()">🗑️ Remover chave guardada</button>`:''}
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
-  // Clear placeholder on focus
-  const inp=document.getElementById('apiKeyInput');
-  if(inp&&cur){inp.addEventListener('focus',()=>{if(inp.value==='***guardada***')inp.value='';},{ once:true});}
-}
-
-function saveApiKey(){
-  const val=document.getElementById('apiKeyInput')?.value?.trim();
-  if(!val||val==='***guardada***'){showToast('Cola a chave primeiro');return;}
-  if(!val.startsWith('sk-ant-')){showToast('Chave inválida — deve começar com sk-ant-');return;}
-  setApiKey(val);
-  showToast('✅ Chave guardada');
-  document.getElementById('apiKeyModalOverlay')?.remove();
-}
-
-async function testApiKey(){
-  const val=document.getElementById('apiKeyInput')?.value?.trim();
-  const key=val&&val!=='***guardada***'?val:getApiKey();
-  if(!key){document.getElementById('apiKeyStatus').textContent='Cola a chave primeiro';return;}
-  const st=document.getElementById('apiKeyStatus');
-  st.textContent='A testar...';st.style.color='var(--text2)';
-  try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':key,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-ipc':'true'
-      },
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'Hi'}]})
-    });
-    if(r.ok){st.textContent='✅ Chave válida e funcional!';st.style.color='var(--good)';}
-    else{const e=await r.json();st.textContent='❌ Erro: '+(e.error?.message||r.status);st.style.color='var(--bad)';}
-  }catch(e){st.textContent='❌ '+e.message;st.style.color='var(--bad)';}
-}
-
 // ═══════════════════════════════════════════════════════════════
-//  SPRINT C1 — ASSISTENTE DE ANÁLISE COM IA
+//  SPRINT C1 — ASSISTENTE IA (via Claude.ai — sem proxy, sem custo)
 // ═══════════════════════════════════════════════════════════════
-let _aiCache={};
 
 function openAIModal(p,a){
   if(!p){showToast('Seleciona um projeto primeiro');return;}
-  const key=getApiKey();
-  if(!key){
-    // Show prompt to configure key
-    const overlay=document.createElement('div');
-    overlay.className='ai-modal-overlay';
-    overlay.id='aiNoKeyOverlay';
-    overlay.innerHTML=`
-      <div class="ai-modal" style="max-height:50dvh">
-        <div class="ai-modal-header">
-          <div class="ai-modal-title">🤖 Análise com IA</div>
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiNoKeyOverlay').remove()" style="font-size:18px;padding:4px 8px">✕</button>
-        </div>
-        <div class="ai-modal-body" style="text-align:center;padding:30px 20px">
-          <div style="font-size:40px;margin-bottom:14px">🔑</div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:8px">API Key necessária</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:20px;line-height:1.6">Para usar o assistente IA precisas de configurar a tua chave da Anthropic. É gratuito criar conta e os primeiros créditos são suficientes para muitas análises.</div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:10px" onclick="document.getElementById('aiNoKeyOverlay').remove();openApiKeyModal()">🔑 Configurar API Key</button>
-          <a href="https://console.anthropic.com" target="_blank" style="font-size:11px;color:var(--blue);display:block">Criar conta em console.anthropic.com →</a>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
-    return;
-  }
 
   const overlay=document.createElement('div');
   overlay.className='ai-modal-overlay';
   overlay.id='aiModalOverlay';
+
+  const prompt=buildAIPrompt(p,a);
+  const claudeUrl='https://claude.ai/new?q='+encodeURIComponent(prompt);
+
+  const info=buildProjectContext(p,a);
+  const roiColor=(a?.roiNet||0)>=20?'var(--good)':(a?.roiNet||0)>=10?'var(--accent)':'var(--bad)';
+
   overlay.innerHTML=`
     <div class="ai-modal">
       <div class="ai-modal-header">
-        <div class="ai-modal-title">🤖 Análise com IA · PropInvest</div>
+        <div class="ai-modal-title">🤖 Análise com IA</div>
         <button class="btn btn-ghost btn-sm" onclick="closeAIModal()" style="font-size:18px;padding:4px 8px">✕</button>
       </div>
-      <div class="ai-modal-body" id="aiModalBody">
-        <div class="ai-loading">
-          <div style="font-size:36px;margin-bottom:14px">🔍</div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">A analisar o mercado...</div>
-          <div class="ai-loading-dots"><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div></div>
-          <div id="aiSteps" style="max-width:300px;margin:16px auto 0;text-align:left">
-            <div class="ai-step"><div class="ai-step-dot active" id="s1dot"></div><span>A preparar dados do projeto</span></div>
-            <div class="ai-step"><div class="ai-step-dot pending" id="s2dot"></div><span>A pesquisar Idealista.pt e Imovirtual.com</span></div>
-            <div class="ai-step"><div class="ai-step-dot pending" id="s3dot"></div><span>A calcular benchmarks e comparáveis</span></div>
-            <div class="ai-step"><div class="ai-step-dot pending" id="s4dot"></div><span>A gerar avaliação e recomendações</span></div>
+      <div class="ai-modal-body">
+
+        <!-- RESUMO DO PROJETO -->
+        <div class="ai-section">
+          <div class="ai-section-title">📋 Dados do Projeto</div>
+          <div class="ai-valuation-hero" style="text-align:left;padding:16px">
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">${esc(p.name||'Projeto')}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="font-size:11px;color:var(--text2)">📍 ${esc(p.city||'—')}${p.parish?', '+esc(p.parish):''}</div>
+              <div style="font-size:11px;color:var(--text2)">🏠 ${esc(p.typology||'—')} · ${p.areaM2||0}m²</div>
+              <div style="font-size:11px;color:var(--text2)">💰 Compra: ${eur(p.purchasePrice)}</div>
+              <div style="font-size:11px;color:var(--text2)">🎯 Venda: ${eur(p.expectedSalePrice)}</div>
+              <div style="font-size:11px;color:var(--text2)">🔨 Obras: ${eur(a?a.wrkTotal:0)}</div>
+              <div style="font-size:11px;font-weight:700;color:${roiColor}">📈 ROI líq: ${a?pct(a.roiNet||0):'—'}</div>
+            </div>
           </div>
         </div>
+
+        <!-- INSTRUÇÃO PRINCIPAL -->
+        <div class="ai-section">
+          <div class="ai-section-title">🚀 Como obter a análise</div>
+          <div style="background:var(--surface);border-radius:var(--radius-sm);padding:16px">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="ai-step" style="align-items:flex-start;gap:12px">
+                <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#09090f;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">1</div>
+                <div>
+                  <div style="font-weight:700;font-size:13px;margin-bottom:3px">Carrega no botão abaixo</div>
+                  <div style="font-size:11px;color:var(--text2)">Abre o Claude.ai com toda a informação do projeto já preenchida — é gratuito</div>
+                </div>
+              </div>
+              <div class="ai-step" style="align-items:flex-start;gap:12px">
+                <div style="width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">2</div>
+                <div>
+                  <div style="font-weight:700;font-size:13px;margin-bottom:3px">Claude pesquisa e analisa</div>
+                  <div style="font-size:11px;color:var(--text2)">O Claude pesquisa automaticamente o Idealista.pt e Imovirtual.com e devolve avaliação completa com comparáveis reais</div>
+                </div>
+              </div>
+              <div class="ai-step" style="align-items:flex-start;gap:12px">
+                <div style="width:24px;height:24px;border-radius:50%;background:var(--good);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">3</div>
+                <div>
+                  <div style="font-weight:700;font-size:13px;margin-bottom:3px">Copia o resumo executivo</div>
+                  <div style="font-size:11px;color:var(--text2)">Copia o texto "Resumo Executivo" da resposta e cola no campo abaixo para partilhar com investidores</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTÃO PRINCIPAL -->
+        <a href="${claudeUrl}" target="_blank" style="text-decoration:none;display:block;margin-bottom:16px">
+          <div style="background:linear-gradient(135deg,#f59e0b,#f97316);border-radius:var(--radius);padding:16px;text-align:center;cursor:pointer">
+            <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#09090f;margin-bottom:4px">🤖 Abrir análise no Claude.ai</div>
+            <div style="font-size:11px;color:rgba(0,0,0,0.6)">Gratuito · Pesquisa web em tempo real · Abre numa nova aba</div>
+          </div>
+        </a>
+
+        <!-- PROMPT COPIÁVEL -->
+        <div class="ai-section">
+          <div class="ai-section-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>📋 Prompt completo (alternativa)</span>
+            <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigator.clipboard.writeText(document.getElementById('aiPromptText').value).then(()=>showToast('Prompt copiado!'))">Copiar</button>
+          </div>
+          <textarea id="aiPromptText" style="width:100%;height:120px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;font-size:10px;color:var(--text2);font-family:monospace;resize:none;line-height:1.4" readonly>${esc(prompt)}</textarea>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px">Podes também copiar este prompt e colar manualmente em qualquer assistente IA (ChatGPT, Gemini, etc.)</div>
+        </div>
+
+        <!-- RESUMO EXECUTIVO MANUAL -->
+        <div class="ai-section">
+          <div class="ai-section-title">📝 Colar Resumo Executivo da IA</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Após obteres a análise do Claude, copia o "Resumo Executivo" e cola aqui para incluir nos relatórios PDF e partilhas.</div>
+          <textarea id="aiSummaryInput" style="width:100%;height:100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;resize:none;line-height:1.5" placeholder="Cola aqui o resumo executivo gerado pelo Claude...">${esc(p.aiSummary||'')}</textarea>
+          <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="saveAISummary()">💾 Guardar resumo no projeto</button>
+        </div>
+
       </div>
     </div>`;
+
   document.body.appendChild(overlay);
   overlay.addEventListener('click',e=>{if(e.target===overlay)closeAIModal();});
+}
 
-  const ck=p.id+'|'+p.purchasePrice+'|'+p.expectedSalePrice+'|'+(a?.wrkTotal||0)+'|'+p.city;
-  if(_aiCache[ck]){renderAIResults(_aiCache[ck],p,a);return;}
-  runAIAnalysis(p,a,ck,key);
+function saveAISummary(){
+  const p=AP();if(!p)return;
+  const txt=document.getElementById('aiSummaryInput')?.value?.trim()||'';
+  p.aiSummary=txt;
+  setP(p);
+  showToast('Resumo guardado no projeto ✅');
+  closeAIModal();
 }
 
 function closeAIModal(){document.getElementById('aiModalOverlay')?.remove();}
-
-function aiStep(n){
-  for(let i=1;i<=4;i++){
-    const d=document.getElementById('s'+i+'dot');
-    if(!d)continue;
-    d.className='ai-step-dot '+(i<n?'done':i===n?'active':'pending');
-  }
-}
-
-async function runAIAnalysis(p,a,cacheKey,key){
-  const body=document.getElementById('aiModalBody');
-  try{
-    aiStep(1);
-    await new Promise(r=>setTimeout(r,400));
-    aiStep(2);
-
-    const info=buildProjectContext(p,a);
-    const prompt=buildAIPrompt(p,a,info);
-
-    aiStep(3);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':key,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-ipc':'true'
-      },
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:4000,
-        tools:[{type:'web_search_20250305',name:'web_search'}],
-        system:'És um especialista sénior em investimento imobiliário em Portugal com 20 anos de experiência. Tens acesso a pesquisa web em tempo real. Pesquisa SEMPRE dados reais de mercado em Idealista.pt e Imovirtual.com para fundamentar a tua análise. Responde SOMENTE com JSON válido, sem texto extra, sem markdown.',
-        messages:[{role:'user',content:prompt}]
-      })
-    });
-
-    if(!res.ok){
-      const err=await res.json().catch(()=>({error:{message:'HTTP '+res.status}}));
-      throw new Error(err.error?.message||'HTTP '+res.status);
-    }
-
-    aiStep(4);
-    const data=await res.json();
-    // Extract text from response (may have tool_use blocks interspersed)
-    const txt=data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
-    if(!txt)throw new Error('Resposta vazia da IA. Verifica o saldo da conta Anthropic.');
-
-    let result;
-    try{
-      const clean=txt.replace(/^```json\s*/,'').replace(/```$/,'').trim();
-      result=JSON.parse(clean);
-    }catch{
-      const m=txt.match(/\{[\s\S]*\}/);
-      if(m)result=JSON.parse(m[0]);
-      else throw new Error('Formato de resposta inválido');
-    }
-    _aiCache[cacheKey]=result;
-    renderAIResults(result,p,a);
-  }catch(err){
-    if(!body)return;
-    body.innerHTML=`<div style="text-align:center;padding:40px 20px">
-      <div style="font-size:40px;margin-bottom:12px">⚠️</div>
-      <div style="font-weight:700;margin-bottom:8px;font-family:'Syne',sans-serif">Erro na análise</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:20px;line-height:1.6;background:var(--surface);padding:12px;border-radius:8px">${esc(err.message)}</div>
-      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="closeAIModal();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button>
-        <button class="btn btn-ghost btn-sm" onclick="closeAIModal();openApiKeyModal()">🔑 Verificar API Key</button>
-      </div>
-    </div>`;
-  }
-}
 
 function buildProjectContext(p,a){
   return{
@@ -2986,119 +2889,41 @@ function buildProjectContext(p,a){
   };
 }
 
-function buildAIPrompt(p,a,info){
-  return `Analisa este projeto de investimento imobiliário em Portugal.
+function buildAIPrompt(p,a){
+  const info=buildProjectContext(p,a);
+  return `És um especialista em investimento imobiliário em Portugal com 20 anos de experiência. Analisa este projeto usando dados REAIS do mercado.
 
-PROJETO:
-Nome: ${p.name||'Sem nome'} | Local: ${p.city||'N/A'}${p.parish?', '+p.parish:''} | Tipologia: ${p.typology||'N/A'} | Área: ${p.areaM2||0}m² | Estratégia: ${p.strategy}
+PROJETO: ${p.name||'Sem nome'}
+Local: ${p.city||'N/A'}${p.parish?', '+p.parish:''} | Tipologia: ${p.typology||'N/A'} | Área: ${p.areaM2||0}m² | Estratégia: ${p.strategy}
 
 FINANCEIROS:
-Compra: ${eur(p.purchasePrice)} (${info.psm?eur(info.psm)+'/m²':'—'}) | Obras: ${eur(a?a.wrkTotal:0)}${info.worksRatio?' ('+info.worksRatio+'% do preço)':''} | Capital total: ${eur(a?a.capTotal:0)}
-Venda esperada: ${eur(p.expectedSalePrice)} (${info.espSm?eur(info.espSm)+'/m²':'—'}) | Lucro bruto: ${eur(a?a.profit:0)} | ROI bruto: ${a?pct(a.roi):'—'} | ROI líquido: ${a?pct(a.roiNet):'—'}
+- Preço de compra: ${eur(p.purchasePrice)} (${info.psm?eur(info.psm)+'/m²':'—'})
+- Total de obras: ${eur(a?a.wrkTotal:0)}${info.worksRatio?' ('+info.worksRatio+'% do preço)':''}
+- Capital total investido: ${eur(a?a.capTotal:0)}
+- Preço de venda esperado: ${eur(p.expectedSalePrice)} (${info.espSm?eur(info.espSm)+'/m²':'—'})
+- Lucro bruto estimado: ${eur(a?a.profit:0)}
+- ROI bruto: ${a?pct(a.roi):'—'} | ROI líquido (pós-imposto): ${a?pct(a.roiNet||0):'—'}
+- Data compra: ${p.purchaseDate||'N/A'} | Saída prevista: ${p.targetExitDate||'N/A'}
 
-INSTRUÇÕES:
-1. Pesquisa AGORA no Idealista.pt e Imovirtual.com: "${p.typology||'apartamento'} ${p.city||''} ${p.areaM2?p.areaM2+'m²':''}". Recolhe preços reais.
-2. Calcula €/m² médio da zona com base nos resultados.
-3. Define valor de mercado justo para este imóvel após obras.
-4. Compara ROI com benchmarks PT: Flip 15-25%, BTL yield 4-7%.
-5. Identifica riscos e oportunidades específicos.
+PEDE-TE:
+1. Pesquisa AGORA no Idealista.pt e Imovirtual.com imóveis ${p.typology||'similares'} em ${p.city||'Portugal'}${p.areaM2?' com área próxima de '+p.areaM2+'m²':''} e lista pelo menos 3-5 comparáveis reais com preço, área e €/m²
 
-RESPONDE SOMENTE COM ESTE JSON (sem texto antes ou depois):
-{"marketValuation":<€ valor mercado>,"marketValuationMin":<€ min>,"marketValuationMax":<€ max>,"marketPricePerM2":<€/m²>,"marketPricePerM2Min":<€/m² min>,"marketPricePerM2Max":<€/m² max>,"comparables":[{"title":"<desc>","price":<€>,"area":<m²>,"pricePerM2":<€/m²>,"source":"Idealista|Imovirtual|CasaSapo"}],"priceVsMarket":<% diferença vs esperado>,"roiVerdict":"excellent|good|fair|poor","roiAssessment":"<avaliação ROI>","priceAssessment":"<avaliação preço>","worksAssessment":"<avaliação obras>","alerts":[{"level":"ok|warning|danger","message":"<msg>"}],"risks":["<risco>"],"opportunities":["<oportunidade>"],"executiveSummary":"<resumo 3-4 parágrafos para investidores>","recommendation":"comprar|manter|renegociar|evitar","recommendationReason":"<razão>","confidence":"alta|média|baixa","searchedSources":["<url>"],"analysisDate":"${new Date().toLocaleDateString('pt-PT')}"}`;
-}
+2. Com base nesses dados reais, define:
+   - Valor de mercado justo após obras (min/max/médio)
+   - Preço médio por m² na zona
+   - Se o preço de venda esperado (${eur(p.expectedSalePrice)}) é realista, baixo ou alto
 
-function renderAIResults(result,p,a){
-  const body=document.getElementById('aiModalBody');
-  if(!body)return;
-  const vClass={excellent:'buy',good:'buy',fair:'caution',poor:'sell'}[result.roiVerdict]||'caution';
-  const vLabel={excellent:'Excelente negócio 🏆',good:'Bom negócio ✅',fair:'Negócio razoável ⚠️',poor:'Negócio fraco 🚨'}[result.roiVerdict]||'Em análise';
-  const recIcon={comprar:'✅',manter:'⏸️',renegociar:'🔄',evitar:'❌'}[result.recommendation]||'📊';
-  const diff=result.priceVsMarket;
-  const diffStr=diff!=null?(diff>=0?'+':'')+Number(diff).toFixed(1)+'% vs mercado':'';
+3. Avalia o ROI (${a?pct(a.roi):'—'} bruto) face aos benchmarks PT:
+   - Flip: 15-25% é bom
+   - Buy-to-let: yield 4-7% é bom
 
-  body.innerHTML=`
-    <div class="ai-section">
-      <div class="ai-section-title">💰 Avaliação de Mercado — Dados Reais</div>
-      <div class="ai-valuation-hero">
-        <div class="ai-val-label">Valor de Mercado Estimado pela IA</div>
-        <div class="ai-val-price">${eur(result.marketValuation)}</div>
-        <div class="ai-val-range">Intervalo: ${eur(result.marketValuationMin)} – ${eur(result.marketValuationMax)}</div>
-        ${p.areaM2>0?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${eur(result.marketPricePerM2)}/m² · Zona: ${eur(result.marketPricePerM2Min)}–${eur(result.marketPricePerM2Max)}/m²</div>`:''}
-        ${diffStr?`<div style="margin-top:8px;font-size:13px;font-weight:700;color:${diff>=0?'var(--good)':'var(--bad)'}">${diffStr} face ao teu preço esperado</div>`:''}
-        <div class="ai-verdict ${vClass}" style="margin-top:12px">${vLabel}</div>
-      </div>
-    </div>
+4. Lista 3 riscos e 3 oportunidades específicos deste projeto
 
-    <div class="ai-section">
-      <div class="ai-section-title">🎯 Recomendação</div>
-      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;display:flex;gap:12px;align-items:flex-start">
-        <div style="font-size:28px;flex-shrink:0">${recIcon}</div>
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;text-transform:capitalize;margin-bottom:4px">${result.recommendation||'—'}</div>
-          <div style="font-size:12px;color:var(--text2);line-height:1.5">${esc(result.recommendationReason||'')}</div>
-          <div style="margin-top:8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)">Confiança da análise: ${result.confidence||'—'}</div>
-        </div>
-      </div>
-    </div>
+5. Dá uma recomendação clara: COMPRAR / MANTER / RENEGOCIAR / EVITAR
 
-    ${result.comparables&&result.comparables.length?`<div class="ai-section">
-      <div class="ai-section-title">🏘️ Imóveis Comparáveis (${result.comparables.length} encontrados)</div>
-      ${result.comparables.slice(0,5).map(c=>`<div class="ai-comp-card">
-        <div class="ai-comp-info">
-          <div class="ai-comp-title">${esc(c.title||'Comparável')}</div>
-          <div class="ai-comp-meta">${c.area||'—'}m² · ${esc(c.source||'Portal')}</div>
-        </div>
-        <div class="ai-comp-price">
-          <div class="ai-comp-val">${eur(c.price)}</div>
-          <div class="ai-comp-psm">${eur(c.pricePerM2)}/m²</div>
-        </div>
-      </div>`).join('')}
-      <div style="font-size:10px;color:var(--muted);margin-top:6px">Fontes: ${(result.searchedSources||[]).slice(0,3).join(' · ')||'Idealista · Imovirtual'}</div>
-    </div>`:''}
+6. Escreve um RESUMO EXECUTIVO profissional de 3-4 parágrafos em português, dirigido a investidores, que inclua: avaliação de mercado, análise financeira, riscos e recomendação. Este resumo deve estar bem estruturado para partilha directa.
 
-    ${result.alerts&&result.alerts.length?`<div class="ai-section">
-      <div class="ai-section-title">⚡ Alertas Inteligentes</div>
-      ${result.alerts.map(al=>`<div class="ai-alert-item ${al.level}">
-        <span style="flex-shrink:0">${al.level==='danger'?'🚨':al.level==='warning'?'⚠️':'✅'}</span>
-        <span>${esc(al.message)}</span>
-      </div>`).join('')}
-    </div>`:''}
-
-    <div class="ai-section">
-      <div class="ai-section-title">📈 Análise Financeira</div>
-      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;font-size:12px;line-height:1.7">
-        ${esc(result.roiAssessment||'')}
-        ${result.priceAssessment?`<div style="margin-top:8px;color:var(--text2)">${esc(result.priceAssessment)}</div>`:''}
-        ${result.worksAssessment?`<div style="margin-top:8px;color:var(--text2)">${esc(result.worksAssessment)}</div>`:''}
-      </div>
-    </div>
-
-    ${result.risks&&result.risks.length||result.opportunities&&result.opportunities.length?`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
-      <div>
-        <div class="ai-section-title" style="margin-bottom:8px">⚠️ Riscos</div>
-        ${(result.risks||[]).map(r=>`<div style="font-size:11px;color:var(--text2);padding:5px 0;border-bottom:1px solid var(--border);line-height:1.4">• ${esc(r)}</div>`).join('')}
-      </div>
-      <div>
-        <div class="ai-section-title" style="margin-bottom:8px">💡 Oportunidades</div>
-        ${(result.opportunities||[]).map(o=>`<div style="font-size:11px;color:var(--text2);padding:5px 0;border-bottom:1px solid var(--border);line-height:1.4">• ${esc(o)}</div>`).join('')}
-      </div>
-    </div>`:''}
-
-    <div class="ai-section">
-      <div class="ai-section-title">📄 Resumo Executivo para Investidores</div>
-      <div class="ai-exec">${esc(result.executiveSummary||'')}</div>
-      <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;justify-content:center"
-        onclick="navigator.clipboard.writeText(document.querySelector('.ai-exec').textContent).then(()=>showToast('Resumo copiado!'))">
-        📋 Copiar resumo executivo
-      </button>
-    </div>
-
-    <div style="display:flex;gap:8px;justify-content:center;padding:10px 0 20px;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="(delete _aiCache[Object.keys(_aiCache)[0]],closeAIModal(),openAIModal(AP(),analyze(AP())))">🔄 Nova análise</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeAIModal();shareProject(AP(),analyze(AP()),${JSON.stringify(result.executiveSummary||'')})">🔗 Partilhar relatório</button>
-    </div>
-    <div style="text-align:center;font-size:9px;color:var(--muted);padding-bottom:10px">Análise de ${result.analysisDate||new Date().toLocaleDateString('pt-PT')} · Dados: ${(result.searchedSources||[]).join(', ')||'Idealista · Imovirtual'}</div>`;
+Começa pela pesquisa web real, depois apresenta a análise estruturada.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3110,24 +2935,33 @@ function computeSmartAlerts(p,a){
   const today=new Date();
   if(a.roi>0&&a.roi<10)alerts.push({type:'danger',icon:'🚨',msg:`ROI bruto ${pct(a.roi)} abaixo de 10% — revê a estratégia.`});
   else if(a.roi>=10&&a.roi<15)alerts.push({type:'warning',icon:'⚠️',msg:`ROI bruto ${pct(a.roi)} abaixo do benchmark de 15% para Flip em PT.`});
-  if(p.purchasePrice>0&&a.wrkTotal>0){const r=a.wrkTotal/p.purchasePrice*100;if(r>50)alerts.push({type:'danger',icon:'🔨',msg:`Obras: ${r.toFixed(0)}% do preço de compra — risco elevado de derrapagem orçamental.`});else if(r>35)alerts.push({type:'warning',icon:'🔨',msg:`Obras: ${r.toFixed(0)}% do preço de compra — acima do recomendado (35%).`});}
-  if(p.targetExitDate){const exit=new Date(p.targetExitDate);const days=Math.round((exit-today)/(864e5));if(days<0)alerts.push({type:'danger',icon:'📅',msg:`Data de saída ultrapassada há ${Math.abs(days)} dias.`});else if(days<30)alerts.push({type:'warning',icon:'📅',msg:`Saída prevista em ${days} dias — confirma o plano de venda.`});}
+  if(p.purchasePrice>0&&a.wrkTotal>0){
+    const r=a.wrkTotal/p.purchasePrice*100;
+    if(r>50)alerts.push({type:'danger',icon:'🔨',msg:`Obras: ${r.toFixed(0)}% do preço de compra — risco elevado.`});
+    else if(r>35)alerts.push({type:'warning',icon:'🔨',msg:`Obras: ${r.toFixed(0)}% do preço de compra — acima do recomendado.`});
+  }
+  if(p.targetExitDate){
+    const exit=new Date(p.targetExitDate);
+    const days=Math.round((exit-today)/(864e5));
+    if(days<0)alerts.push({type:'danger',icon:'📅',msg:`Data de saída ultrapassada há ${Math.abs(days)} dias.`});
+    else if(days<30)alerts.push({type:'warning',icon:'📅',msg:`Saída prevista em ${days} dias.`});
+  }
   if(!p.expectedSalePrice)alerts.push({type:'warning',icon:'💡',msg:'Preço de venda esperado não definido.'});
   if(!p.areaM2)alerts.push({type:'warning',icon:'💡',msg:'Área do imóvel não definida.'});
-  if(a.invRes.length&&Math.abs(a.splitSum-100)>0.5)alerts.push({type:'danger',icon:'👥',msg:`Split de lucro soma ${pct(a.splitSum)} — deve ser 100%.`});
+  if(a.invRes&&a.invRes.length&&Math.abs(a.splitSum-100)>0.5)alerts.push({type:'danger',icon:'👥',msg:`Split de lucro soma ${pct(a.splitSum)} — deve ser 100%.`});
   return alerts;
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  SPRINT C4 — RELATÓRIO WEB PARA INVESTIDORES
 // ═══════════════════════════════════════════════════════════════
-async function shareProject(p,a,aiSummary){
+async function shareProject(p,a){
   if(!p||!a){showToast('Seleciona um projeto com dados');return;}
   if(!DB||!CURRENT_USER){showToast('Necessário login para partilhar');return;}
   showToast('A gerar relatório...');
   try{
     const shareId='ti'+Date.now().toString(36)+Math.random().toString(36).substr(2,6);
-    const reportHtml=buildInvestorReportHtml(p,a,aiSummary,shareId);
+    const reportHtml=buildInvestorReportHtml(p,a,shareId);
     await DB.collection('shared_reports').doc(shareId).set({
       html:reportHtml,
       projectName:p.name||'Projeto',
@@ -3141,19 +2975,29 @@ async function shareProject(p,a,aiSummary){
     overlay.className='ai-modal-overlay';
     overlay.id='shareModalOverlay';
     overlay.innerHTML=`
-      <div class="ai-modal" style="max-height:60dvh">
+      <div class="ai-modal" style="max-height:65dvh">
         <div class="ai-modal-header">
           <div class="ai-modal-title">🔗 Relatório para Investidores</div>
           <button class="btn btn-ghost btn-sm" onclick="document.getElementById('shareModalOverlay').remove()" style="font-size:18px;padding:4px 8px">✕</button>
         </div>
         <div class="ai-modal-body">
-          <div style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.5">Relatório web profissional de <strong style="color:var(--text)">${esc(p.name||'Projeto')}</strong> pronto a partilhar. Válido <strong>30 dias</strong>, sem necessidade de conta.</div>
-          <div class="ai-share-link" onclick="navigator.clipboard.writeText(window._shareLink).then(()=>showToast('Link copiado!'))" style="cursor:pointer">${esc(link)}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.5">
+            Relatório web profissional de <strong style="color:var(--text)">${esc(p.name||'Projeto')}</strong> pronto a partilhar.<br>
+            <span style="font-size:11px">Válido <strong>30 dias</strong> · Sem conta · Abre em qualquer browser</span>
+          </div>
+          <div class="ai-share-link" onclick="navigator.clipboard.writeText(window._shareLink).then(()=>showToast('Link copiado!'))" style="cursor:pointer;word-break:break-all">${esc(link)}</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(window._shareLink).then(()=>showToast('Copiado!'))" style="justify-content:center">📋 Copiar link</button>
+            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(window._shareLink).then(()=>showToast('Link copiado! ✅'))" style="justify-content:center">📋 Copiar link</button>
             <button class="btn btn-primary btn-sm" onclick="window.open(window._shareLink,'_blank')" style="justify-content:center">👁️ Pré-visualizar</button>
           </div>
-          <div style="margin-top:12px;font-size:10px;color:var(--muted);text-align:center">O destinatário vê um relatório visual completo sem precisar de conta ou app.</div>
+          <div style="margin-top:14px;background:var(--surface);border-radius:var(--radius-sm);padding:12px;font-size:11px;color:var(--text2);line-height:1.6">
+            <div style="font-weight:700;color:var(--text);margin-bottom:6px">O relatório inclui:</div>
+            ✅ KPIs financeiros · Waterfall · Estrutura de custos<br>
+            ✅ Apuramento fiscal IRS Cat. G<br>
+            ${p.aiSummary?'✅ Resumo executivo da análise IA<br>':''}
+            ✅ Design profissional com branding Tessa Advisors<br>
+            ✅ Aviso legal incluído
+          </div>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -3161,163 +3005,116 @@ async function shareProject(p,a,aiSummary){
   }catch(e){showToast('Erro: '+e.message);}
 }
 
-function buildInvestorReportHtml(p,a,aiSummary,shareId){
+function buildInvestorReportHtml(p,a,shareId){
   const today=new Date().toLocaleDateString('pt-PT');
   const roi=a.roiNet||0;
   const roiColor=roi>=20?'#10b981':roi>=10?'#f59e0b':'#ef4444';
   const profitColor=(a.netProfit||0)>=0?'#10b981':'#ef4444';
+  const totalCosts=a.acqAll+a.wrkTotal+(a.ami+(a.saleOth||0))+a.taxTotal;
+  const bars=[
+    {label:'Aquisição',val:a.acqAll,color:'#f59e0b'},
+    {label:'Obras',val:a.wrkTotal,color:'#3b82f6'},
+    {label:'Venda/Comissões',val:a.ami+(a.saleOth||0),color:'#ef4444'},
+    {label:'Imposto',val:a.taxTotal,color:'#8b5cf6'},
+  ];
 
-  return `<!DOCTYPE html><html lang="pt-PT"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.name||'Projeto')} — PropInvest Pro · Tessa Advisors</title>
+  return`<!DOCTYPE html><html lang="pt-PT"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.name||'Projeto')} — Tessa Advisors</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#09090f;color:#f1f5f9;font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
-.container{max-width:780px;margin:0 auto;padding:24px 20px 60px}
-/* HEADER */
-.report-header{background:linear-gradient(135deg,#17181f,#1e2030);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:28px 28px 24px;margin-bottom:24px;position:relative;overflow:hidden}
-.report-header::before{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;background:radial-gradient(circle,rgba(245,158,11,0.12),transparent);border-radius:50%}
-.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
-.brand-name{font-family:'Syne',sans-serif;font-weight:800;font-size:14px;background:linear-gradient(135deg,#fff,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.badge-shared{background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;letter-spacing:.05em;text-transform:uppercase}
-.project-title{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(22px,4vw,30px);line-height:1.2;margin-bottom:8px}
-.project-meta{font-size:13px;color:#94a3b8;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.meta-tag{background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600}
-.report-date{margin-top:16px;font-size:11px;color:#475569}
-/* KPI GRID */
-.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}
-@media(min-width:500px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
-.kpi{background:#17181f;border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:16px;position:relative;overflow:hidden}
+body{background:#09090f;color:#f1f5f9;font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;padding:0}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+.hdr{background:linear-gradient(135deg,#17181f,#1e2030);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:24px;margin-bottom:20px;position:relative;overflow:hidden}
+.hdr::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(245,158,11,.15),transparent);border-radius:50%;pointer-events:none}
+.brand{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.brand-name{font-family:'Syne',sans-serif;font-weight:800;font-size:13px;background:linear-gradient(135deg,#fff,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.badge{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:#f59e0b;font-size:9px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.05em;text-transform:uppercase}
+.ptitle{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(20px,4vw,28px);margin-bottom:10px;line-height:1.2}
+.pmeta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.tag{background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;color:#94a3b8}
+.rdate{font-size:10px;color:#475569;margin-top:10px}
+.kgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+@media(min-width:480px){.kgrid{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:#17181f;border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:14px;position:relative;overflow:hidden}
 .kpi::after{content:'';position:absolute;top:-20px;right:-20px;width:60px;height:60px;border-radius:50%;opacity:.1}
-.kpi.amber::after{background:#f59e0b}.kpi.blue::after{background:#3b82f6}.kpi.green::after{background:#10b981}.kpi.red::after{background:#ef4444}
-.kpi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:8px}
-.kpi-value{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(16px,3.5vw,22px);word-break:break-all;line-height:1.1}
-.kpi-sub{font-size:10px;color:#64748b;margin-top:4px}
-/* WATERFALL */
-.section{background:#17181f;border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:20px;margin-bottom:16px}
-.section-title{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:14px}
-.wf-row{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,0.03)}
-.wf-row.highlight{background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.15)}
-.wf-label{font-size:12px;color:#94a3b8}
-.wf-val{font-family:'Syne',sans-serif;font-weight:700;font-size:13px}
-.pill-pos{color:#10b981}.pill-neg{color:#ef4444}.pill-fin{color:#3b82f6}
-/* CHART BARS */
-.bar-chart{margin-top:8px}
-.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.bar-label{font-size:11px;color:#94a3b8;width:100px;flex-shrink:0;text-align:right}
-.bar-track{flex:1;background:rgba(255,255,255,0.05);border-radius:999px;height:10px;overflow:hidden}
-.bar-fill{height:100%;border-radius:999px;transition:width .6s}
-.bar-value{font-size:11px;font-weight:700;width:80px;flex-shrink:0;text-align:right}
-/* AI SUMMARY */
-.ai-box{background:linear-gradient(135deg,rgba(245,158,11,0.06),rgba(249,115,22,0.04));border:1px solid rgba(245,158,11,0.2);border-radius:16px;padding:20px}
-.ai-box-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#f59e0b;margin-bottom:12px;display:flex;align-items:center;gap:6px}
-.ai-summary-text{font-size:13px;line-height:1.8;color:#cbd5e1;white-space:pre-wrap}
-/* FISCAL */
-.metric{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px}
-.metric:last-child{border:none}
+.k-a::after{background:#f59e0b}.k-b::after{background:#3b82f6}.k-g::after{background:#10b981}.k-r::after{background:#ef4444}
+.kl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:6px}
+.kv{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,3vw,20px);word-break:break-all;line-height:1.1}
+.ks{font-size:9px;color:#64748b;margin-top:3px}
+.sec{background:#17181f;border:1px solid rgba(255,255,255,.06);border-radius:18px;padding:18px;margin-bottom:14px}
+.st{font-family:'Syne',sans-serif;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:12px}
+.wrow{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:9px;margin-bottom:5px;background:rgba(255,255,255,.02)}
+.wrow.hl{background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.12)}
+.wl{font-size:11px;color:#94a3b8}.wv{font-family:'Syne',sans-serif;font-weight:700;font-size:12px}
+.pos{color:#10b981}.neg{color:#ef4444}.fin{color:#3b82f6}
+.brow{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.blbl{font-size:10px;color:#94a3b8;width:90px;flex-shrink:0;text-align:right}
+.btrk{flex:1;background:rgba(255,255,255,.05);border-radius:999px;height:9px;overflow:hidden}
+.bfil{height:100%;border-radius:999px}
+.bval{font-size:10px;font-weight:700;width:75px;flex-shrink:0;text-align:right}
+.mrow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px}
+.mrow:last-child{border:none}
 .mk{color:#94a3b8}.mv{font-weight:600}
-/* FOOTER */
-.report-footer{text-align:center;margin-top:40px;font-size:11px;color:#334155;line-height:1.8}
-.footer-brand{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:4px}
-.disclaimer{font-size:10px;color:#1e293b;margin-top:8px;background:#111218;padding:12px;border-radius:8px;text-align:left;line-height:1.6}
-</style></head><body>
-<div class="container">
+.ai-box{background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(249,115,22,.04));border:1px solid rgba(245,158,11,.2);border-radius:16px;padding:18px;margin-bottom:14px}
+.ai-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#f59e0b;margin-bottom:10px}
+.ai-text{font-size:12px;line-height:1.8;color:#cbd5e1;white-space:pre-wrap}
+.foot{text-align:center;margin-top:40px;font-size:10px;color:#334155;line-height:1.8}
+.footb{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#f59e0b;margin-bottom:4px}
+.disc{font-size:9px;color:#1e293b;margin-top:10px;background:#0d0d14;padding:12px;border-radius:8px;text-align:left;line-height:1.6;border:1px solid rgba(255,255,255,.04)}
+</style></head><body><div class="wrap">
 
-<!-- HEADER -->
-<div class="report-header">
-  <div class="brand">
-    <div class="brand-name">PropInvest Pro · Tessa Advisors</div>
-    <div class="badge-shared">Relatório Partilhado</div>
+<div class="hdr">
+  <div class="brand"><div class="brand-name">PropInvest Pro · Tessa Advisors</div><div class="badge">Relatório Partilhado</div></div>
+  <div class="ptitle">${esc(p.name||'Projeto de Investimento')}</div>
+  <div class="pmeta">
+    ${p.city?`<span class="tag">📍 ${esc(p.city)}${p.parish?', '+esc(p.parish):''}</span>`:''}
+    ${p.typology?`<span class="tag">${esc(p.typology)}</span>`:''}
+    ${p.areaM2?`<span class="tag">${p.areaM2} m²</span>`:''}
+    <span class="tag">${esc(p.strategy)}</span>
+    ${p.targetExitDate?`<span class="tag">🎯 ${p.targetExitDate}</span>`:''}
   </div>
-  <div class="project-title">${esc(p.name||'Projeto de Investimento')}</div>
-  <div class="project-meta">
-    ${p.city?`<span class="meta-tag">📍 ${esc(p.city)}${p.parish?', '+esc(p.parish):''}</span>`:''}
-    ${p.typology?`<span class="meta-tag">${esc(p.typology)}</span>`:''}
-    ${p.areaM2?`<span class="meta-tag">${p.areaM2} m²</span>`:''}
-    <span class="meta-tag">${esc(p.strategy)}</span>
-    ${p.targetExitDate?`<span class="meta-tag">🎯 Saída: ${p.targetExitDate}</span>`:''}
-  </div>
-  <div class="report-date">Relatório gerado em ${today} · Válido 30 dias · ID: ${shareId}</div>
+  <div class="rdate">Gerado em ${today} · ID ${shareId} · Válido 30 dias</div>
 </div>
 
-<!-- KPIs -->
-<div class="kpi-grid">
-  <div class="kpi amber">
-    <div class="kpi-label">Aquisição All-In</div>
-    <div class="kpi-value" style="color:#f59e0b">${eur(a.acqAll)}</div>
-    ${p.areaM2?`<div class="kpi-sub">${eur(Math.round(a.acqAll/p.areaM2))}/m²</div>`:''}
-  </div>
-  <div class="kpi blue">
-    <div class="kpi-label">Capital Investido</div>
-    <div class="kpi-value" style="color:#3b82f6">${eur(a.capTotal)}</div>
-    <div class="kpi-sub">${a.invRes.length} investidor(es)</div>
-  </div>
-  <div class="kpi ${(a.netProfit||0)>=0?'green':'red'}">
-    <div class="kpi-label">Lucro Líquido</div>
-    <div class="kpi-value" style="color:${profitColor}">${eur(a.netProfit||0)}</div>
-    <div class="kpi-sub">ROI líq. ${pct(roi)}</div>
-  </div>
-  <div class="kpi ${roi>=15?'green':roi>=8?'amber':'red'}">
-    <div class="kpi-label">ROI Líquido</div>
-    <div class="kpi-value" style="color:${roiColor}">${pct(roi)}</div>
-    <div class="kpi-sub">Pós-imposto</div>
-  </div>
+<div class="kgrid">
+  <div class="kpi k-a"><div class="kl">Aquisição All-In</div><div class="kv" style="color:#f59e0b">${eur(a.acqAll)}</div>${p.areaM2?`<div class="ks">${eur(Math.round(a.acqAll/p.areaM2))}/m²</div>`:''}</div>
+  <div class="kpi k-b"><div class="kl">Capital Investido</div><div class="kv" style="color:#3b82f6">${eur(a.capTotal)}</div><div class="ks">${a.invRes.length} invest.</div></div>
+  <div class="kpi ${(a.netProfit||0)>=0?'k-g':'k-r'}"><div class="kl">Lucro Líquido</div><div class="kv" style="color:${profitColor}">${eur(a.netProfit||0)}</div><div class="ks">ROI líq. ${pct(roi)}</div></div>
+  <div class="kpi ${roi>=15?'k-g':roi>=8?'k-a':'k-r'}"><div class="kl">ROI Líquido</div><div class="kv" style="color:${roiColor}">${pct(roi)}</div><div class="ks">Pós-imposto</div></div>
 </div>
 
-<!-- WATERFALL -->
-<div class="section">
-  <div class="section-title">💧 Waterfall Financeiro</div>
-  <div class="wf-row"><span class="wf-label">Venda de referência</span><span class="wf-val pill-pos">${eur(a.saleRef)}</span></div>
-  <div class="wf-row"><span class="wf-label">Comissão AMI + outros</span><span class="wf-val pill-neg">−${eur(a.ami+(a.saleOth||0))}</span></div>
-  <div class="wf-row"><span class="wf-label">Venda líquida</span><span class="wf-val pill-pos">${eur(a.saleNet)}</span></div>
-  <div class="wf-row"><span class="wf-label">Capital a reembolsar</span><span class="wf-val pill-neg">−${eur(a.capTotal)}</span></div>
-  <div class="wf-row"><span class="wf-label">Lucro bruto</span><span class="wf-val ${a.profit>=0?'pill-pos':'pill-neg'}">${eur(a.profit)}</span></div>
-  <div class="wf-row"><span class="wf-label">Imposto mais-valias</span><span class="wf-val pill-neg">−${eur(a.taxTotal)}</span></div>
-  <div class="wf-row highlight"><span class="wf-label" style="font-weight:700;color:#f1f5f9">Lucro Líquido pós-imposto</span><span class="wf-val" style="color:${profitColor};font-size:15px">${eur(a.netProfit||0)}</span></div>
+<div class="sec">
+  <div class="st">💧 Waterfall Financeiro</div>
+  <div class="wrow"><span class="wl">Venda de referência</span><span class="wv pos">${eur(a.saleRef)}</span></div>
+  <div class="wrow"><span class="wl">Comissão + outros custos venda</span><span class="wv neg">−${eur(a.ami+(a.saleOth||0))}</span></div>
+  <div class="wrow"><span class="wl">Venda líquida</span><span class="wv pos">${eur(a.saleNet)}</span></div>
+  <div class="wrow"><span class="wl">Capital a reembolsar</span><span class="wv neg">−${eur(a.capTotal)}</span></div>
+  <div class="wrow"><span class="wl">Lucro bruto</span><span class="wv ${a.profit>=0?'pos':'neg'}">${eur(a.profit)}</span></div>
+  <div class="wrow"><span class="wl">Imposto mais-valias (50%×28%)</span><span class="wv neg">−${eur(a.taxTotal)}</span></div>
+  <div class="wrow hl"><span class="wl" style="font-weight:700;color:#f1f5f9">Lucro Líquido pós-imposto</span><span class="wv" style="color:${profitColor};font-size:14px">${eur(a.netProfit||0)}</span></div>
 </div>
 
-<!-- ESTRUTURA DE CUSTOS -->
-<div class="section">
-  <div class="section-title">📊 Estrutura de Custos</div>
-  <div class="bar-chart">
-    ${[
-      {label:'Aquisição',val:a.acqAll,color:'#f59e0b'},
-      {label:'Obras',val:a.wrkTotal,color:'#3b82f6'},
-      {label:'Venda/Comissões',val:a.ami+(a.saleOth||0),color:'#ef4444'},
-      {label:'Imposto',val:a.taxTotal,color:'#8b5cf6'},
-    ].map(item=>{
-      const total=a.acqAll+a.wrkTotal+(a.ami+(a.saleOth||0))+a.taxTotal;
-      const pctVal=total>0?Math.round(item.val/total*100):0;
-      return `<div class="bar-row">
-        <div class="bar-label">${item.label}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pctVal}%;background:${item.color}"></div></div>
-        <div class="bar-value" style="color:${item.color}">${eur(item.val)}</div>
-      </div>`;
-    }).join('')}
-  </div>
+<div class="sec">
+  <div class="st">📊 Estrutura de Custos</div>
+  ${bars.map(b=>{const pv=totalCosts>0?Math.round(b.val/totalCosts*100):0;return`<div class="brow"><div class="blbl">${b.label}</div><div class="btrk"><div class="bfil" style="width:${pv}%;background:${b.color}"></div></div><div class="bval" style="color:${b.color}">${eur(b.val)}</div></div>`;}).join('')}
 </div>
 
-<!-- FISCAL -->
-<div class="section">
-  <div class="section-title">📑 Apuramento Fiscal (IRS Cat. G)</div>
-  <div class="metric"><span class="mk">Lucro bruto</span><span class="mv">${eur(a.profit)}</span></div>
-  <div class="metric"><span class="mk">Taxa de inclusão (50%)</span><span class="mv">${eur(a.taxableGain)}</span></div>
-  <div class="metric"><span class="mk">Taxa autónoma mais-valias</span><span class="mv">28%</span></div>
-  <div class="metric"><span class="mk">Imposto estimado</span><span class="mv" style="color:#ef4444">−${eur(a.taxTotal)}</span></div>
-  <div class="metric"><span class="mk">Taxa efectiva sobre lucro</span><span class="mv">${(50*.28).toFixed(0)}% (50%×28%)</span></div>
-  <div class="metric"><span class="mk" style="font-weight:700;color:#f1f5f9">Lucro líquido pós-imposto</span><span class="mv" style="color:${profitColor};font-size:15px">${eur(a.netProfit||0)}</span></div>
+<div class="sec">
+  <div class="st">📑 Apuramento Fiscal — IRS Cat. G (Art. 43º CIRS)</div>
+  <div class="mrow"><span class="mk">Lucro bruto</span><span class="mv">${eur(a.profit)}</span></div>
+  <div class="mrow"><span class="mk">Base tributável (inclusão 50%)</span><span class="mv">${eur(a.taxableGain)}</span></div>
+  <div class="mrow"><span class="mk">Taxa autónoma mais-valias</span><span class="mv">28%</span></div>
+  <div class="mrow"><span class="mk">Taxa efectiva sobre lucro</span><span class="mv">14% (50%×28%)</span></div>
+  <div class="mrow"><span class="mk">Imposto estimado</span><span class="mv" style="color:#ef4444">−${eur(a.taxTotal)}</span></div>
+  <div class="mrow"><span class="mk" style="font-weight:700;color:#f1f5f9">Lucro líquido pós-imposto</span><span class="mv" style="color:${profitColor};font-size:14px">${eur(a.netProfit||0)}</span></div>
 </div>
 
-${aiSummary?`<!-- AI SUMMARY -->
-<div class="ai-box">
-  <div class="ai-box-title">🤖 Análise do Assistente IA · PropInvest</div>
-  <div class="ai-summary-text">${esc(aiSummary)}</div>
-</div>`:''}
+${p.aiSummary?`<div class="ai-box"><div class="ai-title">🤖 Análise do Assistente IA</div><div class="ai-text">${esc(p.aiSummary)}</div></div>`:''}
 
-<!-- FOOTER -->
-<div class="report-footer">
-  <div class="footer-brand">PropInvest Pro · Tessa Advisors</div>
+<div class="foot">
+  <div class="footb">PropInvest Pro · Tessa Advisors</div>
   <div>Relatório gerado automaticamente em ${today}</div>
-  <div class="disclaimer">⚠️ Aviso Legal: Este relatório tem carácter informativo e não constitui aconselhamento financeiro, fiscal ou jurídico. Os valores apresentados são estimativas baseadas nos dados inseridos. As mais-valias e obrigações fiscais devem ser confirmadas com um contabilista ou advogado fiscal certificado. Investir em imobiliário envolve riscos.</div>
+  <div class="disc">⚠️ Aviso Legal: Este relatório tem carácter informativo e não constitui aconselhamento financeiro, fiscal ou jurídico. Os valores apresentados são estimativas baseadas nos dados inseridos pelo utilizador. As obrigações fiscais devem ser confirmadas com contabilista ou advogado fiscal certificado. Investir em imobiliário implica riscos de perda de capital.</div>
 </div>
 
 </div></body></html>`;
@@ -3326,14 +3123,22 @@ ${aiSummary?`<!-- AI SUMMARY -->
 function checkShareLink(){
   const params=new URLSearchParams(window.location.search);
   const shareId=params.get('share');
-  if(!shareId||!DB)return;
-  // Show the report
-  document.body.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;font-family:'DM Sans',sans-serif;font-size:14px">A carregar relatório...</div>`;
+  if(!shareId)return;
+  if(!DB){setTimeout(checkShareLink,1000);return;}
+  document.body.style.background='#09090f';
+  document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;font-family:sans-serif;font-size:13px">A carregar relatório...</div>';
   DB.collection('shared_reports').doc(shareId).get().then(doc=>{
-    if(!doc.exists){document.body.innerHTML=`<div style="text-align:center;padding:40px;background:#09090f;min-height:100vh;color:#94a3b8">Link inválido ou expirado.</div>`;return;}
-    document.open();document.write(doc.data().html);document.close();
-  }).catch(()=>{document.body.innerHTML='<div style="padding:40px;color:#ef4444">Erro ao carregar.</div>';});
+    if(!doc.exists){
+      document.body.innerHTML='<div style="text-align:center;padding:60px 20px;background:#09090f;min-height:100vh;color:#94a3b8"><div style="font-size:40px;margin-bottom:16px">🔗</div><div style="font-size:16px;font-weight:700;margin-bottom:8px;color:#f1f5f9">Link inválido ou expirado</div><div>Este link expirou ou nunca existiu.</div></div>';
+      return;
+    }
+    const html=doc.data().html;
+    document.open();document.write(html);document.close();
+  }).catch(e=>{
+    document.body.innerHTML='<div style="padding:40px;color:#ef4444;text-align:center">Erro ao carregar relatório: '+e.message+'</div>';
+  });
 }
+
 
 
 
