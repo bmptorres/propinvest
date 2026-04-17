@@ -2815,14 +2815,16 @@ function openApiKeySetup(){
 }
 
 function akSave(){
-  const k=document.getElementById('akIn')?.value?.trim();
-  const px=document.getElementById('pxIn')?.value?.trim();
-  if(k&&!k.startsWith('••')){
-    if(!k.startsWith('sk-ant-')){showToast('Chave inválida — começa com sk-ant-');return;}
+  const k=document.getElementById('akIn')?.value?.trim()||'';
+  const px=document.getElementById('pxIn')?.value?.trim()||'';
+  // Save key if it's a real key (not the placeholder dots)
+  if(k&&!k.includes('•')){
+    if(!k.startsWith('sk-ant-')){showToast('Chave inválida — deve começar com sk-ant-');return;}
     setApiKey(k);
   }
-  setProxyUrl(px||'');
-  showToast('✅ Guardado');
+  // Always save proxy URL (even empty = remove)
+  setProxyUrl(px);
+  showToast('✅ Guardado com sucesso!');
   document.getElementById('apiSetupOverlay')?.remove();
 }
 
@@ -2885,28 +2887,47 @@ function closeAIModal(){document.getElementById('aiMod')?.remove();}
 
 async function runAI(p,a,ck,k){
   try{
-    // Ultra-lean prompt — minimum tokens
     const c=p.city||'Lisboa',t=p.typology||'apartamento',ar=p.areaM2||0;
     const pp=eur(p.purchasePrice),vv=eur(p.expectedSalePrice),roi=a?Math.round(a.roiNet||0)+'%':'';
-    const prompt=`Imovel: ${t} ${ar}m2 ${c} PT. Compra:${pp} Venda:${vv} ROI:${roi}.
-Pesquisa Idealista.pt "${t} ${c}" e lista 4 comparaveis reais.
-Responde so com JSON:
-{"val":0,"vmin":0,"vmax":0,"psm":0,"comps":[{"d":"","p":0,"a":0,"pm":0}],"ok":"good","diff":0,"ris":[""],"ops":[""],"res":"resumo executivo 2 paragrafos em portugues","rec":"comprar","conf":"media"}`;
 
-    const d=await aiCall(k,'claude-haiku-4-5-20251001',600,
-      'Especialista imoveis PT. Pesquisa Idealista.pt. JSON only.',
-      [{role:'user',content:prompt}],true);
+    // STEP 1: JSON data (no free text to avoid corruption)
+    const q1=`Imovel ${t} ${ar}m2 ${c} PT. Compra:${pp} Venda:${vv} ROI:${roi}.
+Pesquisa Idealista.pt "${t} ${c}" 4 imoveis.
+JSON ONLY:
+{"val":0,"vmin":0,"vmax":0,"psm":0,"comps":[{"d":"desc","p":0,"a":0,"pm":0}],"ok":"good","diff":0,"ris":["risco"],"ops":["op"],"rec":"comprar","conf":"media"}`;
 
-    const txt=(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    if(!txt)throw new Error('Sem resposta. Verifica créditos na conta Anthropic.');
+    const d1=await aiCall(k,'claude-haiku-4-5-20251001',500,
+      'Return JSON only. No text. No markdown.',
+      [{role:'user',content:q1}],true);
+
+    const t1=(d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    if(!t1)throw new Error('Sem resposta. Verifica créditos Anthropic.');
 
     let r;
-    try{r=JSON.parse(txt.replace(/```json|```/g,'').trim());}
-    catch{const m=txt.match(/\{[\s\S]*\}/);if(m)r=JSON.parse(m[0]);else throw new Error('Resposta inválida. Tenta novamente.');}
+    try{
+      const cl=t1.replace(/```json|```/gi,'').trim();
+      r=JSON.parse(cl);
+    }catch{
+      const m=t1.match(/\{[\s\S]*?\}/);
+      if(m)try{r=JSON.parse(m[0]);}catch{throw new Error('JSON inválido. Tenta novamente.');}
+      else throw new Error('Resposta inválida. Tenta novamente.');
+    }
+
+    // STEP 2: Plain text summary (separate call = zero JSON risk)
+    const q2=`Projeto ${t} ${ar}m2 ${c}. Compra:${pp} Venda:${vv} ROI:${roi}. Valor mercado:${eur(r.val||0)}. Rec:${r.rec||'analisar'}.
+Escreve resumo executivo 2 paragrafos curtos em portugues para investidores. Sem titulos.`;
+
+    const d2=await aiCall(k,'claude-haiku-4-5-20251001',280,
+      'Especialista imoveis PT. Responde em portugues.',
+      [{role:'user',content:q2}],false);
+
+    const summ=(d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    r.res=summ||'Analise concluida.';
 
     _aiCache[ck]=r;
     const pr=AP();if(pr&&r.res){pr.aiSummary=r.res;setP(pr);}
     showAIResult(r,p,a,ck);
+
   }catch(e){
     const b=document.getElementById('aiBody');
     if(!b)return;
