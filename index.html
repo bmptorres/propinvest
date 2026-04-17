@@ -2903,14 +2903,20 @@ JSON ONLY:
     const t1=(d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
     if(!t1)throw new Error('Sem resposta. Verifica créditos Anthropic.');
 
+    // Extract outermost JSON object (brace-matching, handles nested arrays)
+    function xj(s){
+      const i=s.indexOf('{');if(i<0)return null;
+      let d=0,j=i;
+      while(j<s.length){if(s[j]==='{')d++;else if(s[j]==='}'){d--;if(d===0)return s.slice(i,j+1);}j++;}
+      return null;
+    }
     let r;
     try{
       const cl=t1.replace(/```json|```/gi,'').trim();
-      r=JSON.parse(cl);
-    }catch{
-      const m=t1.match(/\{[\s\S]*?\}/);
-      if(m)try{r=JSON.parse(m[0]);}catch{throw new Error('JSON inválido. Tenta novamente.');}
-      else throw new Error('Resposta inválida. Tenta novamente.');
+      const js=xj(cl)||cl;
+      r=JSON.parse(js);
+    }catch(pe){
+      throw new Error('IA devolveu formato invalido: '+pe.message.slice(0,60)+'. Tenta novamente.');
     }
 
     // STEP 2: Plain text summary (separate call = zero JSON risk)
