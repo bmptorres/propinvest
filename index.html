@@ -2611,6 +2611,7 @@ function showApp(user){
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0">${initials}</div>
         <button class="btn btn-ghost btn-sm" id="btnDel" style="display:none;flex-shrink:0" onclick="deleteActiveProject()" title="Apagar">🗑️</button>
+        <button class="btn btn-ghost btn-sm" onclick="openApiKeySetup()" style="padding:5px 8px;font-size:13px;flex-shrink:0" title="Configurar IA">🔑</button>
         <button class="btn btn-ghost btn-sm" onclick="doLogout()" style="padding:6px 9px;font-size:16px;flex-shrink:0" title="Sair">↪</button>
       </div>`
   }
@@ -2816,6 +2817,11 @@ function openApiKeySetup(){
           <button class="btn btn-primary btn-sm" onclick="akSave()" style="justify-content:center">💾 Guardar</button>
         </div>
         ${cur?`<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;color:var(--bad)" onclick="setApiKey('');showToast('Chave removida');document.getElementById('apiSetupOverlay').remove()">🗑️ Remover chave</button>`:''}
+              <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">URL do Proxy Cloudflare Worker</div>
+          <input class="finput" id="proxyUrlIn" type="url" placeholder="https://tessa-ai.XXX.workers.dev" value="${localStorage.getItem('tessa_proxy_url')||''}" style="font-size:11px;"/>
+          <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:6px;font-size:11px" onclick="const v=document.getElementById('proxyUrlIn')?.value?.trim();localStorage.setItem('tessa_proxy_url',v||'');showToast(v?'URL guardado!':'URL removido')">Guardar URL Proxy</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -2850,33 +2856,14 @@ async function akTest(){
 async function callAnthropicAPI(key,model,maxTokens,system,messages,useWebSearch=false){
   const payload={model,max_tokens:maxTokens,system,messages};
   if(useWebSearch)payload.tools=[{type:'web_search_20250305',name:'web_search'}];
-
-  // Use allorigins.win as free CORS proxy — no account needed
-  const target='https://api.anthropic.com/v1/messages';
-  const proxyUrl='https://api.allorigins.win/raw?url='+encodeURIComponent(target);
-
-  // Try direct first (works in some environments)
-  try{
-    const r=await fetch(target,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-ipc':'true'},
-      body:JSON.stringify(payload)
-    });
-    if(r.ok){const d=await r.json();if(!d.error)return d;}
-  }catch(e){/* fallback to proxy */}
-
-  // Fallback: use corsproxy.io (free, no account)
-  try{
-    const proxy2='https://corsproxy.io/?'+encodeURIComponent(target);
-    const r2=await fetch(proxy2,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
-      body:JSON.stringify(payload)
-    });
-    if(r2.ok){const d2=await r2.json();if(!d2.error)return d2;}
-    const err=await r2.json().catch(()=>({error:{message:'HTTP '+r2.status}}));
-    throw new Error(err.error?.message||'HTTP '+r2.status);
-  }catch(e2){throw new Error(e2.message||'Erro de ligação. Verifica a tua API Key.');}
+  const proxyUrl=localStorage.getItem('tessa_proxy_url')||'';
+  const endpoint=proxyUrl||'https://api.anthropic.com/v1/messages';
+  const headers={'Content-Type':'application/json','anthropic-version':'2023-06-01','x-api-key':key};
+  if(!proxyUrl)headers['anthropic-dangerous-direct-browser-ipc']='true';
+  const r=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify(payload)});
+  const d=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
+  if(d.error)throw new Error(d.error.message||'Erro desconhecido');
+  return d;
 }
 
 // ═══════════════════════════════════════════════════════════════
