@@ -1017,7 +1017,7 @@ function renderDash(p,a){
         <div class="label-xs" style="color:var(--accent)">Projeto Ativo</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <button class="btn btn-sm" style="background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(249,115,22,.15));border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="openAIModal(AP(),analyze(AP()))">🤖 Analisar IA</button>
-          <button class="btn btn-sm" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);color:var(--blue);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="shareProject(AP(),analyze(AP()))">🔗 Partilhar</button>
+          
         </div>
       </div>
       <div class="hero-title">${esc(p.name||'Projeto sem nome')}</div>
@@ -2887,351 +2887,647 @@ function closeAIModal(){document.getElementById('aiMod')?.remove();}
 
 async function runAI(p,a,ck,k){
   try{
-    const c=p.city||'Lisboa',t=p.typology||'apartamento',ar=p.areaM2||0;
-    const pp=eur(p.purchasePrice),vv=eur(p.expectedSalePrice),roi=a?Math.round(a.roiNet||0)+'%':'';
+    const city   = p.city||'Lisboa';
+    const parish = p.parish||'';
+    const loc    = parish?`${parish}, ${city}`:city;
+    const typo   = p.typology||'apartamento';
+    const area   = Number(p.areaM2||0);
+    const extras = [];
+    if(p.marketConfig?.hasPool)    extras.push('piscina');
+    if(p.marketConfig?.hasGarage)  extras.push('garagem');
+    if(p.marketConfig?.hasGarden)  extras.push('jardim');
+    if(p.marketConfig?.hasTerrace) extras.push('terraco');
 
-    // PASSO 1: JSON com APENAS NUMEROS (sem strings = sem risco de aspas)
-    const q1=`Pesquisa Idealista.pt: ${t} ${c}${ar>0?' '+ar+'m2':''}.
-JSON ONLY (substitui zeros por valores reais, sem texto extra):
-{"val":0,"vmin":0,"vmax":0,"psm":0,"diff":0,"comps":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"rec":1,"ok":1,"conf":1}
-Legenda rec: 1=comprar 2=manter 3=renegociar 4=evitar
-Legenda ok: 1=excelente 2=bom 3=razoavel 4=fraco
-Legenda conf: 1=alta 2=media 3=baixa
-diff=percentagem diferenca entre val e ${vv} (positivo=acima mercado)
-APENAS JSON. Nada mais.`;
+    const saleExp   = Number(p.expectedSalePrice||0);
+    const salePerM2 = area>0&&saleExp>0 ? Math.round(saleExp/area) : 0;
+    const totalCost = a ? (a.acqAll+a.wrkTotal+(a.holdingTotal||0)) : Number(p.purchasePrice||0);
+    const netProfit = a ? (a.netProfit||0) : 0;
+    const roi       = a ? Math.round(a.roiNet||0) : 0;
 
-    const d1=await aiCall(k,'claude-haiku-4-5-20251001',200,
-      'Return ONLY the JSON object with real numbers. No text before or after. No explanation.',
+    // ── PASSO 1: JSON só com números ──────────────────────
+    const q1 = `Pesquisa no Idealista.pt imoveis ${typo} a venda em ${loc}${area>0?' com area entre '+Math.round(area*0.7)+'m2 e '+Math.round(area*1.3)+'m2':''}.
+Compara os precos encontrados com o preco de venda pretendido de ${saleExp>0?saleExp+'eur ('+salePerM2+'eur/m2)':'nao definido'}.
+JSON ONLY (numeros reais, sem texto):
+{"med":0,"psmMed":0,"psmMin":0,"psmMax":0,"vmin":0,"vmax":0,"comps":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"pos":0,"ok":2,"conf":2}
+med=mediana preco de mercado para este imovel; psmMed=euro/m2 medio zona; psmMin/psmMax=intervalo euro/m2; vmin/vmax=intervalo preco venda realista; comps=comparaveis(p=preco,a=area m2); pos=posicionamento preco pretendido vs mercado(-2=muito baixo,-1=abaixo,0=dentro,1=acima,2=muito acima); ok=avaliacao negocio(1=excelente,2=bom,3=razoavel,4=fraco ROI=${roi}%); conf=confianca(1=alta,2=media,3=baixa). JSON ONLY.`;
+
+    const d1 = await aiCall(k,'claude-haiku-4-5-20251001',220,
+      'Real estate expert Portugal. Search Idealista.pt. Return ONLY the JSON. No text.',
       [{role:'user',content:q1}],true);
 
-    const t1=(d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    if(!t1)throw new Error('Sem resposta da IA. Verifica creditos em console.anthropic.com');
+    const t1 = (d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    if(!t1) throw new Error('Sem resposta. Verifica creditos em console.anthropic.com');
 
-    // Extract JSON safely
-    let r={val:0,vmin:0,vmax:0,psm:0,diff:0,comps:[],rec:1,ok:3,conf:2};
+    // Extractor JSON robusto
+    let r = {med:0,psmMed:0,psmMin:0,psmMax:0,vmin:0,vmax:0,comps:[],pos:0,ok:2,conf:2};
     try{
       let s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
-      // Find first { and last matching }
-      let depth=0,start=-1,end=-1;
+      let depth=0,si=-1,ei=-1;
       for(let i=0;i<s.length;i++){
-        if(s[i]==='{'){if(start<0)start=i;depth++;}
-        else if(s[i]==='}'){depth--;if(depth===0&&start>=0){end=i;break;}}
+        if(s[i]==='{'){if(si<0)si=i;depth++;}
+        else if(s[i]==='}'){depth--;if(depth===0&&si>=0){ei=i;break;}}
       }
-      if(start>=0&&end>start)r=JSON.parse(s.slice(start,end+1));
+      if(si>=0&&ei>si) r=JSON.parse(s.slice(si,ei+1));
     }catch(e){
-      // If JSON fails, try to extract individual numbers
       const n=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
-      r.val=n('val',0);r.vmin=n('vmin',0);r.vmax=n('vmax',0);r.psm=n('psm',0);
-      r.diff=n('diff',0);r.rec=n('rec',1);r.ok=n('ok',3);r.conf=n('conf',2);
+      r={med:n('med',0),psmMed:n('psmMed',0),psmMin:n('psmMin',0),psmMax:n('psmMax',0),
+         vmin:n('vmin',0),vmax:n('vmax',0),comps:[],pos:n('pos',0),ok:n('ok',2),conf:n('conf',2)};
     }
 
-    // Convert numeric codes to strings
-    r.rec={1:'comprar',2:'manter',3:'renegociar',4:'evitar'}[Math.round(r.rec)]||'analisar';
-    r.ok={1:'excellent',2:'good',3:'fair',4:'poor'}[Math.round(r.ok)]||'fair';
-    r.conf={1:'alta',2:'media',3:'baixa'}[Math.round(r.conf)]||'media';
+    // Normaliza
+    r.ok   = Math.min(4,Math.max(1,Math.round(Number(r.ok)||2)));
+    r.conf = Math.min(3,Math.max(1,Math.round(Number(r.conf)||2)));
+    r.pos  = Math.min(2,Math.max(-2,Math.round(Number(r.pos)||0)));
 
-    // PASSO 2: Texto livre em chamada separada (zero risco JSON)
-    const q2=`Imovel: ${t} ${ar>0?ar+'m2':''} ${c}. Compra:${pp} Venda:${vv} ROI:${roi}.
-Valor mercado estimado: ${eur(r.val||0)}. Recomendacao: ${r.rec}.
+    // ── PASSO 2: Texto profissional separado ──────────────
+    const posLabel = {'-2':'muito abaixo do mercado','-1':'abaixo do mercado',
+      '0':'dentro do mercado','1':'acima do mercado','2':'muito acima do mercado'}[String(r.pos)]||'a avaliar';
 
-Responde em texto simples com 3 seccoes (sem formatacao markdown):
-RISCOS: lista 2 riscos curtos (uma linha cada)
-OPORTUNIDADES: lista 2 oportunidades curtas (uma linha cada)
-RESUMO: 2 paragrafos profissionais para investidores`;
+    const q2 = `Projecto imobiliario em ${loc}: ${typo}${area>0?' '+area+'m2':''}${extras.length?', '+extras.join(', '):''}
+Preco de venda pretendido: ${saleExp>0?saleExp+'eur ('+salePerM2+'eur/m2)':'nao definido'}
+Mediana de mercado Idealista.pt (${loc}): ${r.med>0?r.med+'eur ('+r.psmMed+'eur/m2)':'a apurar'}
+Intervalo de mercado: ${r.vmin>0?r.vmin+'eur a '+r.vmax+'eur':'a apurar'}
+Posicionamento do preco pedido: ${posLabel}
+Capital total investido: ${totalCost}eur | Lucro liquido estimado: ${netProfit}eur | ROI liquido: ${roi}%
+Avaliacao negocio: ${{1:'excelente',2:'bom',3:'razoavel',4:'fraco'}[r.ok]||'razoavel'}
 
-    const d2=await aiCall(k,'claude-haiku-4-5-20251001',350,
-      'Especialista imoveis Portugal. Responde em portugues sem markdown.',
+Responde em portugues, linguagem financeira imobiliaria profissional, sem markdown:
+POSICIONAMENTO: (1-2 frases tecnicas sobre o posicionamento do preco pedido face ao mercado, com dados concretos)
+RISCOS: (2 riscos especificos, uma linha cada)
+OPORTUNIDADES: (2 oportunidades concretas, uma linha cada)
+RESUMO: (2 paragrafos executivos profissionais para apresentar a investidores)`;
+
+    const d2 = await aiCall(k,'claude-haiku-4-5-20251001',380,
+      'Especialista senior investimento imobiliario Portugal. Linguagem financeira. Portugues.',
       [{role:'user',content:q2}],false);
 
-    const txt2=(d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
+    const txt2 = (d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
 
-    // Parse plain text sections robustly
-    const sec=(label)=>{
-      const m=txt2.match(new RegExp(label+'[:\\s]+([\\s\\S]*?)(?=RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
+    const sec=(lbl)=>{
+      const m=txt2.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
       return m?m[1].trim():'';
     };
-    const riscoTxt=sec('RISCOS');
-    const opsTxt=sec('OPORTUNIDADES');
-    const resumoTxt=sec('RESUMO');
+    r.posText = sec('POSICIONAMENTO');
+    r.ris     = sec('RISCOS').split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.ops     = sec('OPORTUNIDADES').split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.res     = sec('RESUMO')||(txt2.length>50?txt2:'Analise concluida.');
 
-    r.ris=riscoTxt.split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.ops=opsTxt.split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.res=resumoTxt||(txt2.length>50?txt2:'Analise concluida com base em dados de mercado Idealista.pt.');
+    r.loc=loc; r.saleExpected=saleExp; r.salePerM2=salePerM2;
+    r.totalCost=totalCost; r.netProfit=netProfit; r.roi=roi;
 
     _aiCache[ck]=r;
-    const pr=AP();if(pr){pr.aiSummary=r.res;setP(pr);}
+    const pr=AP(); if(pr){pr.aiSummary=r.res; setP(pr);}
     showAIResult(r,p,a,ck);
-
 
   }catch(e){
     const b=document.getElementById('aiBody');
     if(!b)return;
-    b.innerHTML=`<div style="text-align:center;padding:40px 20px"><div style="font-size:40px;margin-bottom:12px">⚠️</div><div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">Erro na análise</div><div style="background:var(--surface);padding:14px;border-radius:10px;font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.6">${esc(e.message)}</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn btn-primary" onclick="document.getElementById('aiMod').remove();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod').remove();openApiKeySetup()">🔑 API Key</button></div></div>`;
+    b.innerHTML=`<div style="text-align:center;padding:40px 20px">
+      <div style="font-size:40px;margin-bottom:12px">⚠️</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">Erro na análise</div>
+      <div style="background:var(--surface);padding:14px;border-radius:10px;font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.6">${esc(e.message)}</div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="document.getElementById('aiMod').remove();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod').remove();openApiKeySetup()">🔑 API Key</button>
+      </div>
+    </div>`;
   }
 }
 
+
+
 function showAIResult(r,p,a,ck){
   const hdr=document.getElementById('aiMod')?.querySelector('.ai-modal-header');
-  if(hdr)hdr.innerHTML=`<div class="ai-modal-title">🤖 Análise Concluída</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button>`;
+  if(hdr)hdr.innerHTML=`<div class="ai-modal-title">🤖 Análise de Mercado Concluída</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button>`;
   const b=document.getElementById('aiBody');if(!b)return;
 
-  // Handle both compact keys (val,vmin...) and legacy full keys
-  const val=Number(r.val||r.marketValuation||0);
-  const vmin=Number(r.vmin||r.marketValuationMin||0);
-  const vmax=Number(r.vmax||r.marketValuationMax||0);
-  const psm=Number(r.psm||r.marketPricePerM2||0);
-  const comps=r.comps||r.comparables||[];
-  const verdict=r.ok||r.roiVerdict||'fair';
-  const diff=Number(r.diff||r.priceVsMarket||0);
-  const risks=r.ris||r.risks||[];
-  const ops=r.ops||r.opportunities||[];
-  const summary=r.res||r.executiveSummary||'';
-  const rec=r.rec||r.recommendation||'—';
-  const conf=r.conf||r.confidence||'—';
+  // Valores do resultado
+  const med       = Number(r.med||0);
+  const psmMed    = Number(r.psmMed||0);
+  const psmMin    = Number(r.psmMin||0);
+  const psmMax    = Number(r.psmMax||0);
+  const vmin      = Number(r.vmin||0);
+  const vmax      = Number(r.vmax||0);
+  const comps     = r.comps||[];
+  const pos       = Number(r.pos||0);  // -2 a +2
+  const ok        = r.ok||2;
+  const conf      = r.conf||2;
+  const posText   = r.posText||'';
+  const risks     = r.ris||[];
+  const ops       = r.ops||[];
+  const summary   = r.res||'';
+  const saleExp   = Number(r.saleExpected||p.expectedSalePrice||0);
+  const salePerM2 = Number(r.salePerM2||0);
+  const totalCost = Number(r.totalCost||0);
 
-  const vClass={excellent:'buy',good:'buy',fair:'caution',poor:'sell'}[verdict]||'caution';
-  const vLabel={excellent:'Excelente 🏆',good:'Bom negócio ✅',fair:'Razoável ⚠️',poor:'Fraco 🚨'}[verdict]||'Em análise';
-  const recIcon={comprar:'✅',manter:'⏸️',renegociar:'🔄',evitar:'❌'}[rec]||'📊';
-  const diffStr=(diff>=0?'+':'')+Number(diff).toFixed(1)+'% vs esperado';
+  // Posicionamento de preço
+  const posConfig = {
+    '-2': {label:'Muito abaixo do mercado 🔽',color:'var(--blue)',   bg:'rgba(59,130,246,.1)',  border:'rgba(59,130,246,.3)',  icon:'📉'},
+    '-1': {label:'Abaixo do mercado ↙',       color:'var(--blue)',   bg:'rgba(59,130,246,.08)', border:'rgba(59,130,246,.2)',  icon:'⬇️'},
+     '0': {label:'Dentro do mercado ✓',        color:'var(--good)',   bg:'rgba(16,185,129,.1)',  border:'rgba(16,185,129,.3)',  icon:'✅'},
+     '1': {label:'Acima do mercado ↗',         color:'var(--accent)', bg:'rgba(245,158,11,.1)',  border:'rgba(245,158,11,.3)', icon:'⚠️'},
+     '2': {label:'Muito acima do mercado 🔺',  color:'var(--bad)',    bg:'rgba(239,68,68,.1)',   border:'rgba(239,68,68,.3)',   icon:'🚨'},
+  };
+  const pc=posConfig[String(pos)]||posConfig['0'];
 
-  // Save summary to project
+  // Avaliação do negócio
+  const okConfig={
+    1:{label:'Excelente negócio 🏆',cls:'buy'},
+    2:{label:'Bom negócio ✅',      cls:'buy'},
+    3:{label:'Negócio razoável ⚠️', cls:'caution'},
+    4:{label:'Negócio fraco 🚨',    cls:'sell'},
+  };
+  const oc=okConfig[ok]||okConfig[2];
+
+  // Diferença percentual preço pedido vs mediana mercado
+  const diffPct=med>0&&saleExp>0?((saleExp-med)/med*100):0;
+  const diffStr=diffPct!==0?(diffPct>0?'+':'')+diffPct.toFixed(1)+'% vs mediana mercado':'';
+
   if(summary){const pr=AP();if(pr){pr.aiSummary=summary;setP(pr);}}
 
   b.innerHTML=`
+    <!-- ── POSICIONAMENTO DO PREÇO (centro da análise) ── -->
     <div class="ai-section">
-      <div class="ai-section-title">💰 Avaliação de Mercado — Idealista.pt</div>
-      <div class="ai-valuation-hero">
-        <div class="ai-val-label">Valor de Mercado Estimado</div>
-        <div class="ai-val-price">${eur(val)}</div>
-        <div class="ai-val-range">Intervalo: ${eur(vmin)} – ${eur(vmax)}</div>
-        ${psm?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${eur(psm)}/m²</div>`:''}
-        <div style="margin-top:8px;font-size:12px;font-weight:700;color:${diff>=0?'var(--good)':'var(--bad)'}">${diffStr}</div>
-        <div class="ai-verdict ${vClass}" style="margin-top:10px">${vLabel}</div>
+      <div class="ai-section-title">🎯 Posicionamento do Preço de Venda — Idealista.pt ${esc(r.loc||p.city||'')}</div>
+
+      <!-- Preço pedido vs mercado -->
+      <div style="background:${pc.bg};border:1px solid ${pc.border};border-radius:var(--radius-sm);padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${pc.color};margin-bottom:4px">Preço pedido pelo investidor</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--text)">${eur(saleExp)}</div>
+            ${salePerM2?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${eur(salePerM2)}/m²</div>`:''}
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Mediana de mercado</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--text)">${eur(med)}</div>
+            ${psmMed?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${eur(psmMed)}/m²</div>`:''}
+          </div>
+        </div>
+
+        <!-- Veredicto de posicionamento -->
+        <div style="background:${pc.color};padding:8px 12px;border-radius:8px;text-align:center">
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff">${pc.icon} ${pc.label}</div>
+          ${diffStr?`<div style="font-size:11px;color:rgba(255,255,255,.85);margin-top:2px">${diffStr}</div>`:''}
+        </div>
+
+        ${posText?`<div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.6;font-style:italic">"${esc(posText)}"</div>`:''}
+      </div>
+
+      <!-- Range de mercado -->
+      ${vmin&&vmax?`<div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Intervalo de preços em ${esc(r.loc||p.city||'')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="text-align:center">
+            <div style="font-size:9px;color:var(--muted)">Mínimo</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${eur(vmin)}</div>
+          </div>
+          <div style="flex:1;height:4px;background:linear-gradient(90deg,var(--blue),var(--good),var(--accent));border-radius:999px;position:relative">
+            ${saleExp&&vmin&&vmax?`<div style="position:absolute;top:-6px;left:${Math.min(95,Math.max(5,((saleExp-vmin)/(vmax-vmin)*100).toFixed(0)))}%;transform:translateX(-50%)">
+              <div style="width:4px;height:16px;background:var(--text);border-radius:2px"></div>
+              <div style="font-size:8px;color:var(--text);white-space:nowrap;margin-top:1px">pedido</div>
+            </div>`:''}
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:9px;color:var(--muted)">Máximo</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${eur(vmax)}</div>
+          </div>
+        </div>
+        ${psmMin&&psmMax?`<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px">${eur(psmMin)}/m² – ${eur(psmMax)}/m²</div>`:''}
+      </div>`:''}
+    </div>
+
+    <!-- ── AVALIAÇÃO DO NEGÓCIO ── -->
+    <div class="ai-section">
+      <div class="ai-section-title">💼 Avaliação do Negócio de Investimento</div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;display:flex;gap:12px;align-items:center">
+        <div class="ai-verdict ${oc.cls}" style="flex-shrink:0">${oc.label}</div>
+        <div style="font-size:11px;color:var(--text2)">
+          ROI líquido: <strong style="color:var(--text)">${r.roi||0}%</strong>
+          ${totalCost?` · Capital: <strong style="color:var(--text)">${eur(totalCost)}</strong>`:''}
+          ${r.netProfit!==undefined?` · Lucro: <strong style="color:${r.netProfit>=0?'var(--good)':'var(--bad)'}">${eur(r.netProfit)}</strong>`:''}
+          <span style="display:block;margin-top:3px">Confiança da análise: ${['','Alta ●●●','Média ●●○','Baixa ●○○'][conf]||conf}</span>
+        </div>
       </div>
     </div>
 
-    <div class="ai-section">
-      <div class="ai-section-title">🎯 Recomendação</div>
-      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;display:flex;gap:12px;align-items:flex-start">
-        <div style="font-size:26px;flex-shrink:0">${recIcon}</div>
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;text-transform:capitalize;margin-bottom:4px">${esc(rec)}</div>
-          <div style="font-size:10px;color:var(--muted)">Confiança: ${esc(conf)}</div>
-        </div>
+    <!-- ── COMPARÁVEIS IDEALISTA ── -->
+    ${comps.filter(c=>c.p>0).length?`<div class="ai-section">
+      <div class="ai-section-title">🏘️ Comparáveis em ${esc(r.loc||p.city||'')} — Idealista.pt (${comps.filter(c=>c.p>0).length} encontrados)</div>
+      ${comps.filter(c=>c.p>0).slice(0,5).map((c,i)=>{
+        const cPsm=c.pm||(c.p&&c.a?Math.round(c.p/c.a):0);
+        const diff2=saleExp&&c.p?((c.p-saleExp)/saleExp*100):0;
+        return `<div class="ai-comp-card">
+          <div class="ai-comp-info">
+            <div class="ai-comp-title">Comparável ${i+1}</div>
+            <div class="ai-comp-meta">${c.a||'—'}m² · Idealista.pt · ${esc(r.loc||p.city||'')}</div>
+          </div>
+          <div class="ai-comp-price">
+            <div class="ai-comp-val">${eur(c.p)}</div>
+            <div class="ai-comp-psm">${eur(cPsm)}/m²</div>
+            ${saleExp?`<div style="font-size:9px;color:${diff2>0?'var(--bad)':'var(--good)'};margin-top:1px">${diff2>0?'+':''}${diff2.toFixed(0)}% vs pedido</div>`:''}
+          </div>
+        </div>`;}).join('')}
+      <div style="font-size:10px;color:var(--muted);margin-top:8px;padding:8px;background:var(--surface);border-radius:6px">
+        📊 Fonte: Idealista.pt · Zona: ${esc(r.loc||p.city||'')} · ${p.typology||'Imóvel'}${p.areaM2?' ~'+p.areaM2+'m²':''}
       </div>
-    </div>
-
-    ${comps.length?`<div class="ai-section">
-      <div class="ai-section-title">🏘️ Comparáveis Idealista (${comps.length})</div>
-      ${comps.slice(0,5).map(c=>`<div class="ai-comp-card">
-        <div class="ai-comp-info">
-          <div class="ai-comp-title">${esc(c.d||c.title||'—')}</div>
-          <div class="ai-comp-meta">${c.a||c.area||'—'}m² · Idealista.pt</div>
-        </div>
-        <div class="ai-comp-price">
-          <div class="ai-comp-val">${eur(c.p||c.price||0)}</div>
-          <div class="ai-comp-psm">${eur(c.pm||c.pricePerM2||0)}/m²</div>
-        </div>
-      </div>`).join('')}
     </div>`:''}
 
-    ${risks.length||ops.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${risks.length?`<div><div class="ai-section-title" style="margin-bottom:8px">⚠️ Riscos</div>${risks.filter(Boolean).map(r=>`<div style="font-size:11px;color:var(--text2);padding:5px 0;border-bottom:1px solid var(--border);line-height:1.4">• ${esc(r)}</div>`).join('')}</div>`:''}
-      ${ops.length?`<div><div class="ai-section-title" style="margin-bottom:8px">💡 Oportunidades</div>${ops.filter(Boolean).map(o=>`<div style="font-size:11px;color:var(--text2);padding:5px 0;border-bottom:1px solid var(--border);line-height:1.4">• ${esc(o)}</div>`).join('')}</div>`:''}
+    <!-- ── RISCOS E OPORTUNIDADES ── -->
+    ${risks.filter(Boolean).length||ops.filter(Boolean).length?`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      ${risks.filter(Boolean).length?`<div class="ai-section" style="margin-bottom:0">
+        <div class="ai-section-title" style="margin-bottom:8px">⚠️ Riscos</div>
+        ${risks.filter(Boolean).map(r=>`<div class="ai-alert-item warning"><span>⚠️</span><span>${esc(r)}</span></div>`).join('')}
+      </div>`:''}
+      ${ops.filter(Boolean).length?`<div class="ai-section" style="margin-bottom:0">
+        <div class="ai-section-title" style="margin-bottom:8px">💡 Oportunidades</div>
+        ${ops.filter(Boolean).map(o=>`<div class="ai-alert-item ok"><span>✅</span><span>${esc(o)}</span></div>`).join('')}
+      </div>`:''}
     </div>`:''}
 
+    <!-- ── RESUMO EXECUTIVO ── -->
     <div class="ai-section">
-      <div class="ai-section-title">📄 Resumo Executivo</div>
+      <div class="ai-section-title">📄 Resumo Executivo para Investidores</div>
       <div class="ai-exec">${esc(summary)}</div>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0 20px">
-      <button class="btn btn-primary" style="justify-content:center;width:100%;padding:14px" onclick="exportAIPDF(AP(),analyze(AP()),${JSON.stringify({val,vmin,vmax,psm,comps,verdict,diff,risks,ops,summary,rec,conf}).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')})">
-        📑 Exportar Relatório PDF
+    <!-- ── ACÇÕES ── -->
+    <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0 20px">
+      <button class="btn btn-primary" style="justify-content:center;width:100%;padding:14px"
+        onclick="exportAIPDF(AP(),analyze(AP()),${JSON.stringify({
+          med,psmMed,psmMin,psmMax,vmin,vmax,comps,pos,ok,conf,
+          posText,ris:risks,ops,res:summary,
+          saleExpected:saleExp,salePerM2,totalCost,
+          netProfit:r.netProfit,roi:r.roi,loc:r.loc
+        }).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')})">
+        📑 Exportar Relatório PDF para Investidores
       </button>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button class="btn btn-ghost btn-sm" style="justify-content:center" onclick="shareProject(AP(),analyze(AP()))">🔗 Relatório Web</button>
-        <button class="btn btn-ghost btn-sm" style="justify-content:center" onclick="delete _aiCache['${ck}'];document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">🔄 Nova análise</button>
-      </div>
+      <button class="btn btn-ghost btn-sm" style="justify-content:center;width:100%"
+        onclick="delete _aiCache['${ck}'];document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">
+        🔄 Nova análise
+      </button>
     </div>`;
 }
 
-// ═══════════════════════════════════════════════════
-// SPRINT C — PDF EXPORT (alta qualidade)
-// ═══════════════════════════════════════════════════
+
+
 async function exportAIPDF(p,a,ai){
-  if(!p||!a){showToast('Sem dados');return;}
+  if(!p||!a){showToast('Sem dados para exportar');return;}
   showToast('A gerar PDF...');
   try{
     const{jsPDF}=window.jspdf;
+    if(!jsPDF)throw new Error('jsPDF nao carregado');
     const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
-    const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=16;
-    const DK=[55,62,67],WH=[255,255,255],BK=[15,23,42],AM=[245,158,11],BL=[59,130,246],GR=[16,185,129],RD=[239,68,68],PU=[139,92,246],GY=[148,163,184],LG=[248,250,252];
+    const W=doc.internal.pageSize.getWidth();
+    const H=doc.internal.pageSize.getHeight();
+    const M=16;
+    // Cores
+    const DK=[55,62,67],WH=[255,255,255],BK=[15,23,42];
+    const AM=[245,158,11],BL=[59,130,246],GR=[16,185,129],RD=[239,68,68],PU=[139,92,246];
+    const GY=[148,163,184],LG=[248,250,252],LGBORDER=[220,225,230];
     let y=0;
 
-    // Cover
-    doc.setFillColor(...DK);doc.rect(0,0,W,58,'F');
-    doc.setFillColor(...AM);doc.rect(0,55,W,3,'F');
-    if(LOGO){try{doc.addImage(LOGO,'PNG',W/2-18,8,36,36);}catch(e){}}
-    doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...WH);
-    doc.text('RELATORIO DE INVESTIMENTO IMOBILIARIO',W/2,49,{align:'center'});
-    y=68;
-    const nL=doc.splitTextToSize(p.name||'Projeto',W-M*2);
-    doc.setFontSize(20);doc.setTextColor(...BK);doc.text(nL,M,y);y+=nL.length*8+4;
-    const meta=[p.city,p.typology,p.areaM2?p.areaM2+'m²':'',p.strategy].filter(Boolean).join(' · ');
-    doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(...GY);doc.text(meta,M,y);y+=6;
-    doc.setFontSize(9);doc.text('Gerado em '+new Date().toLocaleDateString('pt-PT')+' · PropInvest Pro · Tessa Advisors',M,y);y+=12;
-    doc.setDrawColor(...AM);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=10;
+    // Helper: nova pagina se necessario
+    const checkPage=(needed)=>{
+      if(y+needed>H-22){addFooterPage(doc,W,H,M);doc.addPage();y=20;return true;}
+      return false;
+    };
 
-    // AI Verdict banner
-    if(ai&&ai.verdict){
-      const vc={excellent:GR,good:GR,fair:AM,poor:RD}[ai.verdict]||AM;
-      doc.setFillColor(...vc);doc.setOpacity(.1);doc.rect(M,y-3,W-M*2,20,'F');doc.setOpacity(1);
-      doc.setDrawColor(...vc);doc.setLineWidth(0.5);doc.rect(M,y-3,W-M*2,20,'S');
-      doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(...vc);
-      const vl={excellent:'EXCELENTE NEGOCIO',good:'BOM NEGOCIO',fair:'NEGOCIO RAZOAVEL',poor:'NEGOCIO FRACO'}[ai.verdict]||'EM ANALISE';
-      doc.text(vl,W/2,y+6,{align:'center'});
-      doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(...GY);
-      doc.text('Recomendacao: '+(ai.rec||'—').toUpperCase()+'  ·  Confianca: '+(ai.conf||'—'),W/2,y+13,{align:'center'});
-      y+=26;
+    // Helper: linha separadora
+    const hr=()=>{
+      doc.setDrawColor(...LGBORDER);doc.setLineWidth(0.3);
+      doc.line(M,y,W-M,y);y+=5;
+    };
+
+    // ── CAPA ─────────────────────────────────────────────────
+    doc.setFillColor(...DK);doc.rect(0,0,W,55,'F');
+    doc.setFillColor(...AM);doc.rect(0,52,W,3,'F');
+    if(typeof LOGO!=='undefined'&&LOGO){
+      try{doc.addImage(LOGO,'PNG',W/2-16,7,32,32);}catch(e){}
+    }
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+    doc.text('RELATORIO DE INVESTIMENTO IMOBILIARIO',W/2,48,{align:'center'});
+
+    y=65;
+    // Nome do projecto
+    const nLines=doc.splitTextToSize(p.name||'Projecto de Investimento',W-M*2);
+    doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...BK);
+    doc.text(nLines,M,y);y+=nLines.length*7+5;
+
+    // Meta linha
+    const metaParts=[p.city,p.parish,p.typology,p.areaM2?p.areaM2+'m2':'',p.strategy].filter(Boolean);
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(...GY);
+    doc.text(metaParts.join('  ·  '),M,y);y+=5;
+    doc.setFontSize(8);
+    doc.text('Gerado em '+new Date().toLocaleDateString('pt-PT')+' · PropInvest Pro · Tessa Advisors',M,y);y+=10;
+    doc.setDrawColor(...AM);doc.setLineWidth(0.6);doc.line(M,y,W-M,y);y+=8;
+
+    // ── BANNER VEREDICTO AI ───────────────────────────────────
+    const aiVerdict=ai&&(Number(ai.ok)||0);
+    if(aiVerdict){
+      const vc={excellent:GR,good:GR,fair:AM,poor:RD}[aiVerdict]||AM;
+      // Fundo simples sem opacity
+      doc.setFillColor(vc[0],vc[1],vc[2]);doc.rect(M,y-2,W-M*2,18,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(...WH);
+      const vLabel={excellent:'EXCELENTE NEGOCIO ★',good:'BOM NEGOCIO ✓',fair:'NEGOCIO RAZOAVEL',poor:'NEGOCIO FRACO'}[aiVerdict]||'EM ANALISE';
+      doc.text(vLabel,W/2,y+7,{align:'center'});
+      doc.setFontSize(8);doc.setFont('helvetica','normal');
+      const recLabel=(ai.rec||'—').toUpperCase();
+      doc.text('Recomendacao: '+recLabel+'   Confianca: '+(ai.conf||'—').toUpperCase(),W/2,y+13,{align:'center'});
+      y+=24;
     }
 
-    // KPIs
+    // ── KPIs ─────────────────────────────────────────────────
+    checkPage(60);
     const roi=a.roiNet||0;
+    const profColor=(a.netProfit||0)>=0?GR:RD;
+    const roiColor=roi>=20?GR:roi>=10?AM:RD;
     const kpis=[
-      {l:'Aquisicao All-In',v:eur(a.acqAll),s:p.areaM2?eur(Math.round(a.acqAll/p.areaM2))+'/m²':'',c:AM},
-      {l:'Capital Investido',v:eur(a.capTotal),s:a.invRes.length+' invest.',c:BL},
-      {l:'Lucro Liquido',v:eur(a.netProfit||0),s:'ROI '+pct(roi),c:(a.netProfit||0)>=0?GR:RD},
-      {l:'ROI Liquido',v:pct(roi),s:'Pos-imposto',c:roi>=20?GR:roi>=10?AM:RD},
+      {l:'Aquisicao All-In',v:eur(a.acqAll),s:p.areaM2?eur(Math.round(a.acqAll/p.areaM2))+'/m2':'',c:AM},
+      {l:'Capital Total',v:eur(a.capTotal),s:(a.invRes&&a.invRes.length||0)+' investidor(es)',c:BL},
+      {l:'Lucro Liquido',v:eur(a.netProfit||0),s:'ROI liq. '+pct(roi),c:profColor},
+      {l:'ROI Liquido',v:pct(roi),s:'Pos-imposto IRS',c:roiColor},
     ];
-    const kW=(W-M*2-10)/2,kH=24;
+    const kW=(W-M*2-8)/2,kH=22;
     kpis.forEach((k,i)=>{
-      const kx=M+(i%2)*(kW+10),ky=y+Math.floor(i/2)*(kH+6);
+      const kx=M+(i%2)*(kW+8),ky=y+Math.floor(i/2)*(kH+5);
       doc.setFillColor(...LG);doc.rect(kx,ky,kW,kH,'F');
       doc.setFillColor(...k.c);doc.rect(kx,ky,2,kH,'F');
-      doc.setDrawColor(...k.c);doc.setLineWidth(0.4);doc.rect(kx,ky,kW,kH,'S');
-      doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(...GY);doc.text(k.l.toUpperCase(),kx+5,ky+7);
-      doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(...BK);doc.text(k.v,kx+5,ky+16);
-      if(k.s){doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);doc.text(k.s,kx+5,ky+21);}
+      doc.setDrawColor(...LGBORDER);doc.setLineWidth(0.2);doc.rect(kx,ky,kW,kH,'S');
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);
+      doc.text(k.l.toUpperCase(),kx+4,ky+6);
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...BK);
+      doc.text(k.v,kx+4,ky+15);
+      if(k.s){doc.setFontSize(6.5);doc.setFont('helvetica','normal');doc.setTextColor(...GY);doc.text(k.s,kx+4,ky+20);}
     });
-    y+=kH*2+18;
+    y+=kH*2+5*2+8;
 
-    // Waterfall
-    if(y>H-80){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...DK);doc.text('WATERFALL FINANCEIRO',M,y);y+=6;
-    [[eur(a.saleRef),'Venda referencia',true],['-'+eur(a.ami+(a.saleOth||0)),'Comissao+custos venda',false],[eur(a.saleNet),'Venda liquida',true],['-'+eur(a.capTotal),'Capital reembolsar',false],[eur(a.profit),'Lucro bruto',a.profit>=0],['-'+eur(a.taxTotal),'Imposto mais-valias',false],[eur(a.netProfit||0),'LUCRO LIQUIDO POS-IMPOSTO',(a.netProfit||0)>=0,true]].forEach(([v,l,pos,hi],i)=>{
-      const ry=y+i*9;
-      if(hi){doc.setFillColor(...GR);doc.setOpacity(.08);doc.rect(M,ry-4,W-M*2,9,'F');doc.setOpacity(1);}
-      else if(i%2===0){doc.setFillColor(...LG);doc.rect(M,ry-4,W-M*2,9,'F');}
-      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9.5:8.5);
-      doc.setTextColor(...(hi?BK:GY));doc.text(l,M+3,ry+1);
-      doc.setTextColor(...(pos?GR:RD));doc.text(v,W-M-3,ry+1,{align:'right'});
+    // ── DECOMPOSICAO DE CUSTOS ────────────────────────────────
+    checkPage(30);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
+    doc.text('DECOMPOSICAO DO INVESTIMENTO',M,y);y+=5;
+    const costRows=[
+      ['Preco de compra',eur(p.purchasePrice||0)],
+      ['Custos de aquisicao (IMT, IS, registos)',eur((a.lg?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0))],
+      ['Obras e reabilitacao',eur(a.wrkTotal||0)],
+      ['Custos de financiamento',eur(a.financingInterestHolding||0)],
+      ['Holding/manutencao',eur(a.holdingTotal||0)],
+      ['TOTAL INVESTIDO',eur(a.capTotal||0)],
+    ];
+    costRows.forEach(([l,v],i)=>{
+      const isTotal=l.startsWith('TOTAL');
+      doc.setFont('helvetica',isTotal?'bold':'normal');
+      doc.setFontSize(isTotal?9:8);
+      if(isTotal){doc.setFillColor(...DK);doc.rect(M,y-3,W-M*2,9,'F');doc.setTextColor(...WH);}
+      else{if(i%2===0){doc.setFillColor(...LG);doc.rect(M,y-3,W-M*2,8,'F');}doc.setTextColor(isTotal?WH[0]:BK[0],isTotal?WH[1]:BK[1],isTotal?WH[2]:BK[2]);}
+      doc.text(l,M+3,y+2);doc.text(v,W-M-3,y+2,{align:'right'});
+      y+=isTotal?10:8;
     });
-    y+=7*9+12;
+    y+=6;
 
-    // Cost bars
-    if(y>H-70){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...DK);doc.text('ESTRUTURA DE CUSTOS',M,y);y+=8;
-    const costs=[['Aquisicao',a.acqAll,AM],['Obras',a.wrkTotal,BL],['Venda/Comissoes',a.ami+(a.saleOth||0),RD],['Imposto',a.taxTotal,PU]];
-    const totC=costs.reduce((s,c)=>s+c[1],0);
-    const bW=W-M*2-50;
-    costs.forEach(([l,v,c])=>{
-      const pv=totC>0?v/totC:0;
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);doc.text(l,M,y+3);
-      doc.setFillColor(235,238,241);doc.rect(M+35,y-2,bW,7,'F');
-      doc.setFillColor(...c);doc.rect(M+35,y-2,bW*pv,7,'F');
-      doc.setFont('helvetica','bold');doc.setTextColor(...c);doc.text(eur(v),W-M,y+3,{align:'right'});
-      y+=11;
-    });y+=6;
+    // ── WATERFALL ─────────────────────────────────────────────
+    checkPage(80);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
+    doc.text('WATERFALL FINANCEIRO',M,y);y+=5;
+    const wfRows=[
+      ['Venda de referencia',eur(a.saleRef||0),true,false],
+      ['Comissao AMI + custos venda','-'+eur((a.ami||0)+(a.saleOth||0)),false,false],
+      ['Venda liquida',eur(a.saleNet||0),true,false],
+      ['Capital a reembolsar','-'+eur(a.capTotal||0),false,false],
+      ['Lucro bruto',(a.profit>=0?'':'-')+eur(Math.abs(a.profit||0)),(a.profit||0)>=0,false],
+      ['Imposto mais-valias (50%x28%)','-'+eur(a.taxTotal||0),false,false],
+      ['LUCRO LIQUIDO POS-IMPOSTO',eur(a.netProfit||0),(a.netProfit||0)>=0,true],
+    ];
+    wfRows.forEach(([l,v,pos,hi],i)=>{
+      const ry=y;
+      if(hi){
+        doc.setFillColor(...GR);doc.rect(M,ry-3,W-M*2,9,'F');
+        doc.setTextColor(...WH);
+      }else if(i%2===0){
+        doc.setFillColor(...LG);doc.rect(M,ry-3,W-M*2,8,'F');
+        doc.setTextColor(...GY);
+      }else{
+        doc.setTextColor(...GY);
+      }
+      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8);
+      if(hi)doc.setTextColor(...WH);
+      else doc.setTextColor(...(hi?WH:GY));
+      doc.text(l,M+3,ry+2);
+      doc.setTextColor(...(pos?GR:RD));if(hi)doc.setTextColor(...WH);
+      doc.text(v,W-M-3,ry+2,{align:'right'});
+      y+=hi?10:8;
+    });
+    y+=8;
 
-    // Fiscal
-    if(y>H-70){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...DK);doc.text('APURAMENTO FISCAL — IRS Cat. G',M,y);y+=4;
-    doc.autoTable({startY:y,head:[['Rubrica','Valor']],body:[['Lucro bruto',eur(a.profit)],['Base tributavel (50%)',eur(a.taxableGain)],['Taxa autónoma','28%'],['Taxa efectiva','14% (50%x28%)'],['Imposto estimado','-'+eur(a.taxTotal)],['Lucro liquido pos-imposto',eur(a.netProfit||0)]],theme:'striped',styles:{fontSize:9,cellPadding:3,font:'helvetica',textColor:BK},headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold'},columnStyles:{1:{halign:'right',fontStyle:'bold'}},margin:{left:M,right:M}});
-    y=doc.lastAutoTable.finalY+12;
-
-    // AI Section
-    if(ai&&ai.val){
-      if(y>H-80){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...DK);doc.text('AVALIACAO DE MERCADO — IDEALISTA.PT',M,y);y+=6;
-      doc.setFillColor(...AM);doc.setOpacity(.08);doc.rect(M,y-2,W-M*2,28,'F');doc.setOpacity(1);
-      doc.setDrawColor(...AM);doc.setLineWidth(0.4);doc.rect(M,y-2,W-M*2,28,'S');
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);doc.text('VALOR DE MERCADO ESTIMADO',M+4,y+6);
-      doc.setFont('helvetica','bold');doc.setFontSize(18);doc.setTextColor(...BK);doc.text(eur(ai.val),M+4,y+17);
+    // ── ESTRUTURA DE CUSTOS (barras) ──────────────────────────
+    checkPage(55);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
+    doc.text('ESTRUTURA DE CUSTOS',M,y);y+=6;
+    const costBars=[
+      ['Aquisicao',a.acqAll||0,AM],
+      ['Obras',a.wrkTotal||0,BL],
+      ['Venda/Comissoes',(a.ami||0)+(a.saleOth||0),RD],
+      ['Imposto',a.taxTotal||0,PU],
+    ];
+    const totCosts=costBars.reduce((s,c)=>s+(c[1]||0),0);
+    const barMaxW=W-M*2-55;
+    costBars.forEach(([l,v,c])=>{
+      const pv=totCosts>0?(v/totCosts):0;
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);
-      doc.text('Intervalo: '+eur(ai.vmin)+' – '+eur(ai.vmax)+(ai.psm?'  |  '+eur(ai.psm)+'/m2 zona':''),M+4,y+24);
-      y+=34;
+      doc.text(l,M,y+3);
+      doc.setFillColor(...LGBORDER);doc.rect(M+38,y-1,barMaxW,6,'F');
+      if(pv>0){doc.setFillColor(...c);doc.rect(M+38,y-1,barMaxW*pv,6,'F');}
+      doc.setFont('helvetica','bold');doc.setTextColor(...c);
+      doc.text(eur(v),W-M,y+3,{align:'right'});
+      y+=10;
+    });
+    y+=5;
 
-      // Comparables
-      if(ai.comps&&ai.comps.length){
-        if(y>H-60){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-        doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('Comparaveis Reais — Idealista.pt',M,y);y+=4;
-        doc.autoTable({startY:y,head:[['Imovel','Area','Preco','Eur/m2']],body:ai.comps.slice(0,6).map(c=>[String(c.d||c.title||'—').substring(0,50),((c.a||c.area)||'—')+'m2',eur(c.p||c.price||0),eur(c.pm||c.pricePerM2||0)]),theme:'grid',styles:{fontSize:8,cellPadding:2.5,font:'helvetica',textColor:BK},headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold',fontSize:8},alternateRowStyles:{fillColor:LG},columnStyles:{0:{cellWidth:80},2:{halign:'right',fontStyle:'bold'},3:{halign:'right'}},margin:{left:M,right:M}});
-        y=doc.lastAutoTable.finalY+10;
+    // ── FISCAL ────────────────────────────────────────────────
+    checkPage(55);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
+    doc.text('APURAMENTO FISCAL — IRS Cat. G (Art. 43 CIRS)',M,y);y+=4;
+    doc.autoTable({
+      startY:y,
+      head:[['Rubrica','Valor']],
+      body:[
+        ['Lucro bruto',eur(a.profit||0)],
+        ['Base tributavel (inclusao 50%)',eur(a.taxableGain||0)],
+        ['Taxa autonoma mais-valias','28%'],
+        ['Taxa efectiva sobre lucro','14% (50% x 28%)'],
+        ['Imposto estimado','-'+eur(a.taxTotal||0)],
+        ['Lucro liquido pos-imposto',eur(a.netProfit||0)],
+      ],
+      theme:'striped',
+      styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
+      headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold'},
+      columnStyles:{1:{halign:'right',fontStyle:'bold'}},
+      margin:{left:M,right:M},
+    });
+    y=doc.lastAutoTable.finalY+10;
+
+    // ── AVALIACAO DE MERCADO IA ───────────────────────────────
+    if(ai&&(ai.med||ai.val||ai.marketValuation)){
+      const aiMed=ai.med||ai.val||ai.marketValuation||0;
+      const aiVmin=ai.vmin||ai.marketValuationMin||0;
+      const aiVmax=ai.vmax||ai.marketValuationMax||0;
+      const aiPsm=ai.psmMed||ai.psm||ai.marketPricePerM2||0;
+      const aiComps=(ai.comps||ai.comparables||[]).filter(c=>c.p>0);
+      const aiRisks=ai.ris||ai.risks||[];
+      const aiOps=ai.ops||ai.opportunities||[];
+      const aiSummary=ai.res||ai.summary||ai.executiveSummary||'';
+      const aiSaleExp=ai.saleExpected||0;
+      const aiPos=Number(ai.pos||0);
+      const aiPosText=ai.posText||'';
+      const aiLoc=String(ai.loc||p.city||'').replace(/[^\w\s,.-]/g,'');
+      const aiNetProfit=Number(ai.netProfit||0);
+      const aiRoi=Number(ai.roi||0);
+
+      checkPage(50);
+      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
+      doc.text('AVALIACAO DE MERCADO — PESQUISA IDEALISTA.PT',M,y);y+=5;
+
+      // Caixa de valor de mercado
+      // Caixa posicionamento de preco de venda
+      const posLbls={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO',
+        '0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'};
+      const posCols={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD};
+      const posC=posCols[String(aiPos)]||AM;
+      doc.setFillColor(...posC);doc.rect(M,y,W-M*2,28,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...WH);
+      doc.text('POSICIONAMENTO DO PRECO DE VENDA',M+4,y+6);
+      doc.setFontSize(13);
+      doc.text(posLbls[String(aiPos)]||'EM ANALISE',M+4,y+15);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);
+      doc.text('Preco pedido: '+eur(aiSaleExp)+
+        '   Mediana mercado ('+aiLoc+'): '+eur(aiMed)+
+        '   Intervalo: '+eur(aiVmin)+' - '+eur(aiVmax),M+4,y+23);
+      y+=33;
+      if(aiPosText){
+        doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(...GY);
+        const ptL=doc.splitTextToSize(aiPosText,W-M*2-4);
+        doc.text(ptL,M,y);y+=ptL.length*4.5+6;
+      }
+      // Resumo financeiro abaixo da caixa
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);
+      doc.text('Capital investido: '+eur(a.capTotal||0)+
+        '   Lucro liquido estimado: '+eur(aiNetProfit)+
+        '   ROI liquido: '+aiRoi+'%',M,y);
+      y+=8;
+
+      // Comparáveis
+      if(aiComps.length){
+        checkPage(40);
+        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...DK);
+        doc.text('Comparaveis encontrados no Idealista.pt',M,y);y+=3;
+        doc.autoTable({
+          startY:y,
+          head:[['No','Area','Preco','Euro/m2']],
+          body:aiComps.slice(0,6).map((c,i)=>[
+            String(i+1)+'.',
+            ((c.a||c.area||0))+'m2',
+            eur(c.p||c.price||0),
+            eur(c.pm||c.pricePerM2||(c.p&&c.a?Math.round(c.p/c.a):0)||0),
+          ]),
+          theme:'grid',
+          styles:{fontSize:8,cellPadding:2,font:'helvetica',textColor:BK},
+          headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold',fontSize:8},
+          alternateRowStyles:{fillColor:LG},
+          columnStyles:{
+            0:{cellWidth:10},
+            2:{halign:'right',fontStyle:'bold'},
+            3:{halign:'right',textColor:AM[0]+','+AM[1]+','+AM[2]},
+          },
+          margin:{left:M,right:M},
+        });
+        y=doc.lastAutoTable.finalY+8;
       }
 
-      // Risks & Ops
-      if(ai.risks&&ai.risks.filter(Boolean).length||ai.ops&&ai.ops.filter(Boolean).length){
-        if(y>H-60){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-        const hw=(W-M*2-8)/2;
-        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...RD);doc.text('RISCOS',M,y);
-        doc.setTextColor(...GR);doc.text('OPORTUNIDADES',M+hw+8,y);y+=4;
-        const mr=Math.max((ai.risks||[]).filter(Boolean).length,(ai.ops||[]).filter(Boolean).length);
-        for(let i=0;i<mr;i++){
-          const rv=(ai.risks||[])[i]||'',ov=(ai.ops||[])[i]||'';
-          doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...BK);
-          if(rv){const l=doc.splitTextToSize('• '+rv,hw);doc.text(l,M,y);}
-          if(ov){const l=doc.splitTextToSize('• '+ov,hw);doc.text(l,M+hw+8,y);}
-          y+=9;
-        }y+=6;
+      // Riscos e Oportunidades
+      const validRisks=aiRisks.filter(Boolean);
+      const validOps=aiOps.filter(Boolean);
+      if(validRisks.length||validOps.length){
+        checkPage(40);
+        const hw=(W-M*2-6)/2;
+        // Riscos
+        if(validRisks.length){
+          doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...RD);
+          doc.text('RISCOS',M,y);
+          doc.setFont('helvetica','normal');doc.setTextColor(...BK);
+          let ry=y+4;
+          validRisks.forEach(r=>{
+            const lines=doc.splitTextToSize('• '+r,hw);
+            doc.setFontSize(8);doc.text(lines,M,ry);ry+=lines.length*4.5+2;
+          });
+        }
+        // Oportunidades
+        if(validOps.length){
+          doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...GR);
+          doc.text('OPORTUNIDADES',M+hw+6,y);
+          doc.setFont('helvetica','normal');doc.setTextColor(...BK);
+          let oy=y+4;
+          validOps.forEach(o=>{
+            const lines=doc.splitTextToSize('• '+o,hw);
+            doc.setFontSize(8);doc.text(lines,M+hw+6,oy);oy+=lines.length*4.5+2;
+          });
+        }
+        y+=Math.max(validRisks.length,validOps.length)*14+8;
       }
 
-      // Executive Summary
-      if(ai.summary){
-        if(y>H-80){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-        doc.setFillColor(...DK);doc.rect(M,y-3,W-M*2,10,'F');
-        doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...WH);doc.text('RESUMO EXECUTIVO PARA INVESTIDORES',M+3,y+4);y+=14;
-        doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(...BK);
-        const sl=doc.splitTextToSize(ai.summary,W-M*2-6);
-        let sy=y+4;
-        sl.forEach(l=>{if(sy>H-30){addFooterPage(doc,W,H,M);doc.addPage();sy=20;}doc.text(l,M+3,sy);sy+=5.5;});
-        y=sy+8;
+      // Resumo Executivo
+      if(aiSummary){
+        checkPage(40);
+        // Banner escuro
+        doc.setFillColor(...DK);doc.rect(M,y,W-M*2,9,'F');
+        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...WH);
+        doc.text('RESUMO EXECUTIVO PARA INVESTIDORES',M+3,y+6);y+=13;
+
+        doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...BK);
+        const sumLines=doc.splitTextToSize(aiSummary,W-M*2-4);
+        sumLines.forEach(line=>{
+          if(y>H-22){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
+          doc.text(line,M+2,y);y+=5;
+        });
+        y+=6;
       }
     }
 
-    // Disclaimer
-    if(y>H-30){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-    doc.setFillColor(235,238,241);doc.rect(M,y,W-M*2,16,'F');
+    // ── AVISO LEGAL ───────────────────────────────────────────
+    checkPage(20);
+    doc.setFillColor(...LG);doc.rect(M,y,W-M*2,16,'F');
     doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GY);
-    const dl=doc.splitTextToSize('AVISO LEGAL: Relatorio informativo. Nao constitui aconselhamento financeiro ou juridico. Valores estimados. Confirmar obrigacoes fiscais com profissional certificado. PropInvest Pro - Tessa Advisors.',W-M*2-6);
-    doc.text(dl,M+3,y+5);y+=18;
+    const disc=doc.splitTextToSize(
+      'AVISO LEGAL: Este relatorio tem caracter informativo e nao constitui aconselhamento financeiro, fiscal ou juridico. '+
+      'Os valores apresentados sao estimativas baseadas nos dados inseridos pelo utilizador. '+
+      'As obrigacoes fiscais devem ser confirmadas com contabilista ou advogado fiscal certificado. '+
+      'Investir em imoveis implica riscos de perda de capital. PropInvest Pro - Tessa Advisors.',
+      W-M*2-6
+    );
+    doc.text(disc,M+3,y+5);y+=18;
 
-    const np=doc.internal.getNumberOfPages();
-    for(let i=1;i<=np;i++)addFooterPage(doc,W,H,M,i,np,LOGO);
-    doc.save('TessaAdvisors_'+((p.name||'Projeto').replace(/[^a-z0-9]/gi,'_'))+'_'+new Date().toISOString().slice(0,10)+'.pdf');
-    showToast('✅ PDF gerado!');closeAIModal();
-  }catch(e){showToast('Erro PDF: '+e.message);console.error(e);}
+    // ── FOOTERS EM TODAS AS PAGINAS ───────────────────────────
+    const totalPages=doc.internal.getNumberOfPages();
+    for(let pg=1;pg<=totalPages;pg++){
+      addFooterPage(doc,W,H,M,pg,totalPages,typeof LOGO!=='undefined'?LOGO:null);
+    }
+
+    // Guardar
+    const fname='TessaAdvisors_'+
+      (p.name||'Projeto').replace(/[^a-zA-Z0-9\u00C0-\u017E]/g,'_').substring(0,30)+
+      '_'+new Date().toISOString().slice(0,10)+'.pdf';
+    doc.save(fname);
+    showToast('PDF gerado com sucesso!');
+    document.getElementById('aiMod')?.remove();
+
+  }catch(err){
+    console.error('PDF error:',err);
+    showToast('Erro PDF: '+err.message);
+  }
 }
 
-// ═══════════════════════════════════════════════════
-// SPRINT C3 — ALERTAS INTELIGENTES
-// ═══════════════════════════════════════════════════
-function computeSmartAlerts(p,a){
-  if(!p||!a)return[];
-  const al=[],td=new Date();
-  if(a.roi>0&&a.roi<10)al.push({type:'danger',icon:'🚨',msg:`ROI bruto ${pct(a.roi)} abaixo de 10%.`});
-  else if(a.roi>=10&&a.roi<15)al.push({type:'warning',icon:'⚠️',msg:`ROI bruto ${pct(a.roi)} abaixo do benchmark 15%.`});
-  if(p.purchasePrice>0&&a.wrkTotal>0){const r=a.wrkTotal/p.purchasePrice*100;if(r>50)al.push({type:'danger',icon:'🔨',msg:`Obras ${r.toFixed(0)}% do preço — risco elevado.`});else if(r>35)al.push({type:'warning',icon:'🔨',msg:`Obras ${r.toFixed(0)}% do preço — acima do recomendado.`});}
-  if(p.targetExitDate){const d=Math.round((new Date(p.targetExitDate)-td)/864e5);if(d<0)al.push({type:'danger',icon:'📅',msg:`Saída ultrapassada há ${Math.abs(d)} dias.`});else if(d<30)al.push({type:'warning',icon:'📅',msg:`Saída em ${d} dias.`});}
-  if(!p.expectedSalePrice)al.push({type:'warning',icon:'💡',msg:'Preço de venda não definido.'});
-  if(!p.areaM2)al.push({type:'warning',icon:'💡',msg:'Área não definida.'});
-  if(a.invRes&&a.invRes.length&&Math.abs(a.splitSum-100)>0.5)al.push({type:'danger',icon:'👥',msg:`Split soma ${pct(a.splitSum)} — deve ser 100%.`});
-  return al;
-}
 
-// ═══════════════════════════════════════════════════
-// SPRINT C4 — RELATÓRIO WEB PARTILHADO
-// ═══════════════════════════════════════════════════
+
 async function shareProject(p,a){
   if(!p||!a)return showToast('Sem dados');
   if(!DB||!CURRENT_USER)return showToast('Necessário login');
