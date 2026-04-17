@@ -2890,49 +2890,78 @@ async function runAI(p,a,ck,k){
     const c=p.city||'Lisboa',t=p.typology||'apartamento',ar=p.areaM2||0;
     const pp=eur(p.purchasePrice),vv=eur(p.expectedSalePrice),roi=a?Math.round(a.roiNet||0)+'%':'';
 
-    // STEP 1: JSON data (no free text to avoid corruption)
-    const q1=`Imovel ${t} ${ar}m2 ${c} PT. Compra:${pp} Venda:${vv} ROI:${roi}.
-Pesquisa Idealista.pt "${t} ${c}" 4 imoveis.
-JSON ONLY:
-{"val":0,"vmin":0,"vmax":0,"psm":0,"comps":[{"d":"desc","p":0,"a":0,"pm":0}],"ok":"good","diff":0,"ris":["risco"],"ops":["op"],"rec":"comprar","conf":"media"}`;
+    // PASSO 1: JSON com APENAS NUMEROS (sem strings = sem risco de aspas)
+    const q1=`Pesquisa Idealista.pt: ${t} ${c}${ar>0?' '+ar+'m2':''}.
+JSON ONLY (substitui zeros por valores reais, sem texto extra):
+{"val":0,"vmin":0,"vmax":0,"psm":0,"diff":0,"comps":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"rec":1,"ok":1,"conf":1}
+Legenda rec: 1=comprar 2=manter 3=renegociar 4=evitar
+Legenda ok: 1=excelente 2=bom 3=razoavel 4=fraco
+Legenda conf: 1=alta 2=media 3=baixa
+diff=percentagem diferenca entre val e ${vv} (positivo=acima mercado)
+APENAS JSON. Nada mais.`;
 
-    const d1=await aiCall(k,'claude-haiku-4-5-20251001',500,
-      'Return JSON only. No text. No markdown.',
+    const d1=await aiCall(k,'claude-haiku-4-5-20251001',200,
+      'Return ONLY the JSON object with real numbers. No text before or after. No explanation.',
       [{role:'user',content:q1}],true);
 
     const t1=(d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    if(!t1)throw new Error('Sem resposta. Verifica créditos Anthropic.');
+    if(!t1)throw new Error('Sem resposta da IA. Verifica creditos em console.anthropic.com');
 
-    // Extract outermost JSON object (brace-matching, handles nested arrays)
-    function xj(s){
-      const i=s.indexOf('{');if(i<0)return null;
-      let d=0,j=i;
-      while(j<s.length){if(s[j]==='{')d++;else if(s[j]==='}'){d--;if(d===0)return s.slice(i,j+1);}j++;}
-      return null;
-    }
-    let r;
+    // Extract JSON safely
+    let r={val:0,vmin:0,vmax:0,psm:0,diff:0,comps:[],rec:1,ok:3,conf:2};
     try{
-      const cl=t1.replace(/```json|```/gi,'').trim();
-      const js=xj(cl)||cl;
-      r=JSON.parse(js);
-    }catch(pe){
-      throw new Error('IA devolveu formato invalido: '+pe.message.slice(0,60)+'. Tenta novamente.');
+      let s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
+      // Find first { and last matching }
+      let depth=0,start=-1,end=-1;
+      for(let i=0;i<s.length;i++){
+        if(s[i]==='{'){if(start<0)start=i;depth++;}
+        else if(s[i]==='}'){depth--;if(depth===0&&start>=0){end=i;break;}}
+      }
+      if(start>=0&&end>start)r=JSON.parse(s.slice(start,end+1));
+    }catch(e){
+      // If JSON fails, try to extract individual numbers
+      const n=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
+      r.val=n('val',0);r.vmin=n('vmin',0);r.vmax=n('vmax',0);r.psm=n('psm',0);
+      r.diff=n('diff',0);r.rec=n('rec',1);r.ok=n('ok',3);r.conf=n('conf',2);
     }
 
-    // STEP 2: Plain text summary (separate call = zero JSON risk)
-    const q2=`Projeto ${t} ${ar}m2 ${c}. Compra:${pp} Venda:${vv} ROI:${roi}. Valor mercado:${eur(r.val||0)}. Rec:${r.rec||'analisar'}.
-Escreve resumo executivo 2 paragrafos curtos em portugues para investidores. Sem titulos.`;
+    // Convert numeric codes to strings
+    r.rec={1:'comprar',2:'manter',3:'renegociar',4:'evitar'}[Math.round(r.rec)]||'analisar';
+    r.ok={1:'excellent',2:'good',3:'fair',4:'poor'}[Math.round(r.ok)]||'fair';
+    r.conf={1:'alta',2:'media',3:'baixa'}[Math.round(r.conf)]||'media';
 
-    const d2=await aiCall(k,'claude-haiku-4-5-20251001',280,
-      'Especialista imoveis PT. Responde em portugues.',
+    // PASSO 2: Texto livre em chamada separada (zero risco JSON)
+    const q2=`Imovel: ${t} ${ar>0?ar+'m2':''} ${c}. Compra:${pp} Venda:${vv} ROI:${roi}.
+Valor mercado estimado: ${eur(r.val||0)}. Recomendacao: ${r.rec}.
+
+Responde em texto simples com 3 seccoes (sem formatacao markdown):
+RISCOS: lista 2 riscos curtos (uma linha cada)
+OPORTUNIDADES: lista 2 oportunidades curtas (uma linha cada)
+RESUMO: 2 paragrafos profissionais para investidores`;
+
+    const d2=await aiCall(k,'claude-haiku-4-5-20251001',350,
+      'Especialista imoveis Portugal. Responde em portugues sem markdown.',
       [{role:'user',content:q2}],false);
 
-    const summ=(d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    r.res=summ||'Analise concluida.';
+    const txt2=(d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
+
+    // Parse plain text sections robustly
+    const sec=(label)=>{
+      const m=txt2.match(new RegExp(label+'[:\\s]+([\\s\\S]*?)(?=RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
+      return m?m[1].trim():'';
+    };
+    const riscoTxt=sec('RISCOS');
+    const opsTxt=sec('OPORTUNIDADES');
+    const resumoTxt=sec('RESUMO');
+
+    r.ris=riscoTxt.split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.ops=opsTxt.split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.res=resumoTxt||(txt2.length>50?txt2:'Analise concluida com base em dados de mercado Idealista.pt.');
 
     _aiCache[ck]=r;
-    const pr=AP();if(pr&&r.res){pr.aiSummary=r.res;setP(pr);}
+    const pr=AP();if(pr){pr.aiSummary=r.res;setP(pr);}
     showAIResult(r,p,a,ck);
+
 
   }catch(e){
     const b=document.getElementById('aiBody');
