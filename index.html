@@ -1174,53 +1174,66 @@ function renderDash(p,a){
 function dc(id){if(CHS[id]){CHS[id].destroy();delete CHS[id];}}
 function renderDashCharts(a){
   if(!a)return;
-  // Chart.js 4.x: passa o canvas element directamente (NAO o contexto 2d)
-  function safeChart(id,config){
-    try{
-      if(CHS[id]){try{CHS[id].destroy();}catch(e){}delete CHS[id];}
-      const el=document.getElementById(id);
-      if(!el||el.tagName!=='CANVAS')return;
-      CHS[id]=new Chart(el,config);
-    }catch(e){console.warn('Chart error ['+id+']:',e.message);}
+
+  function makeChart(id,cfg){
+    if(CHS[id]){try{CHS[id].destroy();}catch(e){}delete CHS[id];}
+    const el=document.getElementById(id);
+    if(!el)return;
+    CHS[id]=new Chart(el,cfg);
   }
 
-  // 1. Estrutura de Custos (doughnut)
-  safeChart('cCosts',{
+  // 1. Estrutura de Custos — doughnut
+  makeChart('cCosts',{
     type:'doughnut',
     data:{
       labels:['Aquisicao','Obras','Venda/Comissoes','Imposto'],
       datasets:[{
-        data:[a.acqAll||0, a.wrkTotal||0, (a.ami||0)+(a.saleOth||0), a.taxTotal||0],
-        backgroundColor:['#f59e0bcc','#3b82f6cc','#ef4444cc','#8b5cf6cc'],
+        data:[
+          Number(a.acqAll)||0,
+          Number(a.wrkTotal)||0,
+          Number((a.ami||0)+(a.saleOth||0)),
+          Number(a.taxTotal)||0
+        ],
+        backgroundColor:[
+          'rgba(245,158,11,0.75)',
+          'rgba(59,130,246,0.75)',
+          'rgba(239,68,68,0.75)',
+          'rgba(139,92,246,0.75)'
+        ],
         borderColor:['#f59e0b','#3b82f6','#ef4444','#8b5cf6'],
-        borderWidth:1.5,
-        hoverOffset:5
+        borderWidth:2,
+        hoverOffset:6
       }]
     },
     options:{
       responsive:true,
       maintainAspectRatio:false,
+      cutout:'62%',
       plugins:{
-        legend:{position:'bottom',labels:{color:'#94a3b8',font:{family:'DM Sans',size:11},padding:14,boxWidth:10}},
-        tooltip:{callbacks:{label:c=>`${c.label}: ${eur(c.raw)}`}}
-      },
-      cutout:'60%'
+        legend:{
+          position:'bottom',
+          labels:{color:'#94a3b8',font:{size:11},padding:12,boxWidth:10}
+        },
+        tooltip:{
+          callbacks:{
+            label:function(ctx){return ' '+ctx.label+': '+eur(ctx.raw);}
+          }
+        }
+      }
     }
   });
 
-  // 2. Obras por Especialidade (bar)
-  if(a.specs&&a.specs.length){
-    safeChart('cSpecs',{
+  // 2. Obras por Especialidade — bar horizontal
+  if(a.specs&&a.specs.length>0){
+    makeChart('cSpecs',{
       type:'bar',
       data:{
-        labels:a.specs.map(x=>x.n),
+        labels:a.specs.map(function(x){return x.n;}),
         datasets:[{
-          data:a.specs.map(x=>x.t),
-          backgroundColor:'rgba(245,158,11,.65)',
+          data:a.specs.map(function(x){return Number(x.t)||0;}),
+          backgroundColor:'rgba(245,158,11,0.65)',
           borderColor:'#f59e0b',
-          borderWidth:1,
-          borderRadius:5,
-          borderSkipped:false
+          borderWidth:1
         }]
       },
       options:{
@@ -1229,30 +1242,31 @@ function renderDashCharts(a){
         indexAxis:'y',
         plugins:{
           legend:{display:false},
-          tooltip:{callbacks:{label:c=>`${eur(c.raw)}`}}
+          tooltip:{callbacks:{label:function(ctx){return ' '+eur(ctx.raw);}}}
         },
         scales:{
-          x:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,0.04)'}},
+          x:{ticks:{color:'#94a3b8',font:{size:10},callback:function(v){return eur(v);}},grid:{color:'rgba(255,255,255,0.05)'}},
           y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}
         }
       }
     });
   }
 
-  // 3. Custos por Fornecedor (bar)
-  if(a.suppliers&&a.suppliers.length){
-    const sColors=['#3b82f6','#8b5cf6','#10b981','#f97316','#06b6d4','#ec4899','#f59e0b','#ef4444','#a3e635','#e879f9'];
-    safeChart('cSuppliers',{
+  // 3. Custos por Fornecedor — bar horizontal
+  if(a.suppliers&&a.suppliers.length>0){
+    const sc=['rgba(59,130,246,0.7)','rgba(139,92,246,0.7)','rgba(16,185,129,0.7)',
+              'rgba(249,115,22,0.7)','rgba(6,182,212,0.7)','rgba(236,72,153,0.7)',
+              'rgba(245,158,11,0.7)','rgba(239,68,68,0.7)','rgba(163,230,53,0.7)'];
+    const bc=['#3b82f6','#8b5cf6','#10b981','#f97316','#06b6d4','#ec4899','#f59e0b','#ef4444','#a3e635'];
+    makeChart('cSuppliers',{
       type:'bar',
       data:{
-        labels:a.suppliers.map(x=>x.n),
+        labels:a.suppliers.map(function(x){return x.n;}),
         datasets:[{
-          data:a.suppliers.map(x=>x.t),
-          backgroundColor:a.suppliers.map((_,i)=>sColors[i%sColors.length]+'99'),
-          borderColor:a.suppliers.map((_,i)=>sColors[i%sColors.length]),
-          borderWidth:1.5,
-          borderRadius:5,
-          borderSkipped:false
+          data:a.suppliers.map(function(x){return Number(x.t)||0;}),
+          backgroundColor:a.suppliers.map(function(_,i){return sc[i%sc.length];}),
+          borderColor:a.suppliers.map(function(_,i){return bc[i%bc.length];}),
+          borderWidth:1.5
         }]
       },
       options:{
@@ -1261,16 +1275,19 @@ function renderDashCharts(a){
         indexAxis:'y',
         plugins:{
           legend:{display:false},
-          tooltip:{callbacks:{label:c=>`${c.label}: ${eur(c.raw)}`}}
+          tooltip:{callbacks:{label:function(ctx){return ' '+eur(ctx.raw);}}}
         },
         scales:{
-          x:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,0.04)'}},
+          x:{ticks:{color:'#94a3b8',font:{size:10},callback:function(v){return eur(v);}},grid:{color:'rgba(255,255,255,0.05)'}},
           y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}
         }
       }
     });
   }
 }
+
+
+
 
 
 // ─────────────────────────────────────────────────────────────
