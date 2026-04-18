@@ -2919,790 +2919,656 @@ function deleteActiveProject(){
 // ═══════════════════════════════════════════════════
 // SPRINT C — API KEY + PROXY CONFIG
 // ═══════════════════════════════════════════════════
-function getApiKey(){return localStorage.getItem('tessa_k')||'';}
-function setApiKey(k){k?localStorage.setItem('tessa_k',k.trim()):localStorage.removeItem('tessa_k');}
-function getProxyUrl(){return localStorage.getItem('tessa_px')||'';}
-function setProxyUrl(u){u?localStorage.setItem('tessa_px',u.trim()):localStorage.removeItem('tessa_px');}
+// ═══════════════════════════════════════════════════════════════════
+//  SPRINT C — ANÁLISE DE MERCADO COM IA
+//  Reescrito do zero — clean, lean, eficiente
+// ═══════════════════════════════════════════════════════════════════
 
+// ── API Key & Proxy ─────────────────────────────────────────────
+function getApiKey(){return localStorage.getItem('tessa_k')||'';}
+function setApiKey(v){v?localStorage.setItem('tessa_k',v.trim()):localStorage.removeItem('tessa_k');}
+function getProxy(){return localStorage.getItem('tessa_px')||'';}
+function setProxy(v){v?localStorage.setItem('tessa_px',v.trim()):localStorage.removeItem('tessa_px');}
+
+// ── API Key Setup Modal ─────────────────────────────────────────
 function openApiKeySetup(){
-  const k=getApiKey(),px=getProxyUrl();
+  const k=getApiKey(),px=getProxy();
   const ov=document.createElement('div');
-  ov.className='ai-modal-overlay';ov.id='apiSetupOverlay';
+  ov.className='ai-modal-overlay';ov.id='akSetup';
   ov.innerHTML=`<div class="ai-modal" style="max-height:90dvh">
     <div class="ai-modal-header">
-      <div class="ai-modal-title">🔑 Configurar API</div>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('apiSetupOverlay').remove()" style="font-size:18px;padding:4px 8px">✕</button>
+      <div class="ai-modal-title">🔑 Configurar API Anthropic</div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('akSetup').remove()" style="font-size:18px;padding:4px 8px">✕</button>
     </div>
     <div class="ai-modal-body">
+      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;line-height:1.7;color:var(--text2)">
+        <strong style="color:var(--accent)">Como obter a API Key:</strong><br>
+        1. Vai a <strong style="color:var(--text)">console.anthropic.com</strong><br>
+        2. Menu API Keys → Create Key<br>
+        3. Copia a chave (começa com <code style="color:var(--accent)">sk-ant-</code>)<br>
+        4. Cola aqui em baixo — fica só no teu dispositivo
+      </div>
       <div class="fgrp" style="margin-bottom:10px">
         <label class="flabel">Anthropic API Key</label>
-        <input class="finput" id="akIn" type="password" placeholder="sk-ant-api03-..." value="${k?'••••••':''}" style="font-family:monospace"/>
+        <input class="finput" id="akInput" type="password" placeholder="sk-ant-api03-..." value="${k?'••••••':''}" style="font-family:monospace"/>
       </div>
       <div class="fgrp" style="margin-bottom:10px">
         <label class="flabel">URL do Proxy Cloudflare Worker</label>
-        <input class="finput" id="pxIn" type="url" placeholder="https://tessa-ai.XXX.workers.dev" value="${px||''}"/>
+        <input class="finput" id="pxInput" type="url" placeholder="https://tessa-ai.XXX.workers.dev" value="${px||''}"/>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Necessário para contornar CORS do browser. Cria em dash.cloudflare.com (gratuito).</div>
       </div>
-      <div id="akSt" style="font-size:11px;min-height:16px;margin-bottom:12px;color:var(--text2)">${k?'<span style="color:var(--good)">✅ Chave configurada</span>':'Sem chave configurada'}</div>
+      <div id="akStatus" style="font-size:11px;min-height:18px;margin-bottom:12px;color:var(--text2)">${k?'<span style="color:var(--good)">✅ Chave configurada</span>':'Sem chave configurada'}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <button class="btn btn-ghost btn-sm" onclick="akTest()" style="justify-content:center">🧪 Testar</button>
         <button class="btn btn-primary btn-sm" onclick="akSave()" style="justify-content:center">💾 Guardar</button>
       </div>
-      ${k?`<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;color:var(--bad)" onclick="setApiKey('');setProxyUrl('');showToast('Removido');document.getElementById('apiSetupOverlay').remove()">🗑️ Remover</button>`:''}
+      ${k?`<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;color:var(--bad)" onclick="setApiKey('');setProxy('');showToast('Removido');document.getElementById('akSetup').remove()">🗑️ Remover chave</button>`:''}
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
-  const inp=document.getElementById('akIn');
+  const inp=document.getElementById('akInput');
   if(inp&&k)inp.addEventListener('focus',function(){if(this.value.startsWith('••'))this.value='';},{once:true});
 }
 
 function akSave(){
-  const k=document.getElementById('akIn')?.value?.trim()||'';
-  const px=document.getElementById('pxIn')?.value?.trim()||'';
-  // Save key if it's a real key (not the placeholder dots)
-  if(k&&!k.includes('•')){
+  const k=(document.getElementById('akInput')?.value||'').trim();
+  const px=(document.getElementById('pxInput')?.value||'').trim();
+  if(k&&!k.startsWith('••')){
     if(!k.startsWith('sk-ant-')){showToast('Chave inválida — deve começar com sk-ant-');return;}
     setApiKey(k);
   }
-  // Always save proxy URL (even empty = remove)
-  setProxyUrl(px);
-  showToast('✅ Guardado com sucesso!');
-  document.getElementById('apiSetupOverlay')?.remove();
+  setProxy(px);
+  showToast('✅ Guardado');
+  document.getElementById('akSetup')?.remove();
 }
 
 async function akTest(){
-  const v=document.getElementById('akIn')?.value?.trim();
+  const v=(document.getElementById('akInput')?.value||'').trim();
   const k=v&&!v.startsWith('••')?v:getApiKey();
-  const st=document.getElementById('akSt');
+  const st=document.getElementById('akStatus');
   if(!k){st.innerHTML='<span style="color:var(--bad)">❌ Sem chave</span>';return;}
   st.innerHTML='<span style="color:var(--text2)">A testar...</span>';
   try{
-    const d=await aiCall(k,'claude-haiku-4-5-20251001',10,'ok',[{role:'user',content:'ok'}],false);
-    st.innerHTML=d.content?.length?'<span style="color:var(--good)">✅ Chave válida!</span>':'<span style="color:var(--bad)">❌ Resposta inesperada</span>';
+    const d=await aiCall(k,'claude-haiku-4-5-20251001',5,'ok',[{role:'user',content:'ok'}],false);
+    st.innerHTML=d.content?.length
+      ?'<span style="color:var(--good)">✅ Chave válida e funcional!</span>'
+      :'<span style="color:var(--bad)">❌ Resposta inesperada</span>';
   }catch(e){st.innerHTML=`<span style="color:var(--bad)">❌ ${esc(e.message)}</span>`;}
 }
 
-// ═══════════════════════════════════════════════════
-// API CALLER — mínimo de código, máxima eficiência
-// ═══════════════════════════════════════════════════
+// ── API Caller ─────────────────────────────────────────────────
 async function aiCall(key,model,maxTok,sys,msgs,webSearch){
-  const px=getProxyUrl();
-  const url=px||'https://api.anthropic.com/v1/messages';
+  const proxy=getProxy();
+  const url=proxy||'https://api.anthropic.com/v1/messages';
   const body={model,max_tokens:maxTok,system:sys,messages:msgs};
   if(webSearch)body.tools=[{type:'web_search_20250305',name:'web_search'}];
   const hdrs={'Content-Type':'application/json','anthropic-version':'2023-06-01','x-api-key':key};
-  if(!px)hdrs['anthropic-dangerous-direct-browser-ipc']='true';
-  const r=await fetch(url,{method:'POST',headers:hdrs,body:JSON.stringify(body)});
-  const d=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
-  if(d.error)throw new Error(d.error.message||'Erro API');
-  return d;
+  if(!proxy)hdrs['anthropic-dangerous-direct-browser-ipc']='true';
+  const res=await fetch(url,{method:'POST',headers:hdrs,body:JSON.stringify(body)});
+  const data=await res.json().catch(()=>({error:{message:'HTTP '+res.status}}));
+  if(data.error)throw new Error(data.error.message||'Erro API');
+  return data;
 }
 
-// ═══════════════════════════════════════════════════
-// SPRINT C1 — ANÁLISE IA (tokens mínimos)
-// ═══════════════════════════════════════════════════
+// ── Abrir Modal de Análise ─────────────────────────────────────
 let _aiCache={};
 
 function openAIModal(p,a){
-  if(!p)return showToast('Seleciona um projeto');
-  const k=getApiKey();
-  if(!k){
+  if(!p)return showToast('Seleciona um projeto primeiro');
+  if(!getApiKey()){
     const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiNoKey';
-    ov.innerHTML=`<div class="ai-modal" style="max-height:55dvh"><div class="ai-modal-header"><div class="ai-modal-title">🤖 Análise IA</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiNoKey').remove()" style="font-size:18px;padding:4px 8px">✕</button></div><div class="ai-modal-body" style="text-align:center;padding:30px 20px"><div style="font-size:44px;margin-bottom:12px">🔑</div><div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">API Key necessária</div><div style="font-size:12px;color:var(--text2);margin-bottom:20px">Configura a chave Anthropic para análise automática.</div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('aiNoKey').remove();openApiKeySetup()">🔑 Configurar agora</button></div></div>`;
+    ov.innerHTML=`<div class="ai-modal" style="max-height:52dvh">
+      <div class="ai-modal-header"><div class="ai-modal-title">🤖 Análise de Mercado IA</div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiNoKey').remove()" style="font-size:18px;padding:4px 8px">✕</button></div>
+      <div class="ai-modal-body" style="text-align:center;padding:32px 20px">
+        <div style="font-size:48px;margin-bottom:14px">🔑</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;margin-bottom:8px">API Key necessária</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:20px;line-height:1.6">
+          Configura a tua chave Anthropic para análise automática de mercado com pesquisa real no Idealista.pt
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('aiNoKey').remove();openApiKeySetup()">🔑 Configurar API Key</button>
+        <a href="https://console.anthropic.com" target="_blank" style="display:block;margin-top:10px;font-size:11px;color:var(--blue)">Criar conta em console.anthropic.com →</a>
+      </div>
+    </div>`;
     document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
     return;
   }
 
-  // Cache key baseado nos dados financeiros chave
-  const ck='ai_'+p.id+'|'+p.purchasePrice+'|'+p.expectedSalePrice+'|'+(a?.wrkTotal||0)+'|'+p.city;
+  const ck='ai|'+p.id+'|'+p.expectedSalePrice+'|'+p.city;
 
-  // Tenta carregar da memória, depois localStorage
-  let cached = _aiCache[ck];
+  // Tenta cache em memória, depois localStorage
+  let cached=_aiCache[ck];
   if(!cached){
-    try{
-      const stored=localStorage.getItem('ai_result_'+p.id);
-      if(stored){ cached=JSON.parse(stored); _aiCache[ck]=cached; }
-    }catch(e){}
+    try{const s=localStorage.getItem('ai_'+p.id);if(s){cached=JSON.parse(s);_aiCache[ck]=cached;}}catch(e){}
   }
 
-  if(cached){
-    // Mostra análise guardada com opção de refazer
-    showAIResult(cached,p,a,ck,true);
-    return;
-  }
-
-  // Sem cache — faz análise nova
-  showAILoading();
-  runAI(p,a,ck,k);
+  if(cached){showAIModal(cached,p,a,ck,true);return;}
+  runAIAnalysis(p,a,ck);
 }
-
-
 
 function showAILoading(){
   const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiMod';
-  ov.innerHTML=`<div class="ai-modal"><div class="ai-modal-header"><div class="ai-modal-title">🤖 A analisar mercado...</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button></div><div class="ai-modal-body" id="aiBody"><div class="ai-loading" style="padding:50px 20px"><div style="font-size:36px;margin-bottom:14px">🔍</div><div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:12px">A pesquisar Idealista.pt...</div><div class="ai-loading-dots"><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div></div><div style="font-size:11px;color:var(--muted);margin-top:16px">Pesquisa web em tempo real · Haiku · Custo ~$0.01</div></div></div></div>`;
+  ov.innerHTML=`<div class="ai-modal">
+    <div class="ai-modal-header">
+      <div class="ai-modal-title">🤖 A analisar mercado...</div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button>
+    </div>
+    <div class="ai-modal-body" id="aiBody">
+      <div class="ai-loading" style="padding:48px 20px;text-align:center">
+        <div style="font-size:36px;margin-bottom:14px">🔍</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:12px">A pesquisar Idealista.pt...</div>
+        <div class="ai-loading-dots"><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div></div>
+        <div style="margin-top:16px;font-size:11px;color:var(--muted)">Pesquisa web em tempo real · Haiku · ~$0.006</div>
+      </div>
+    </div>
+  </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 }
 
-function closeAIModal(){document.getElementById('aiMod')?.remove();}
-
-async function runAI(p,a,ck,k){
+// ── Motor de Análise ───────────────────────────────────────────
+async function runAIAnalysis(p,a,ck){
+  showAILoading();
   try{
-    const loc  = (p.parish?p.parish+', ':'')+( p.city||'Lisboa');
-    const typo = p.typology||'apartamento';
-    const area = Number(p.areaM2||0);
-    const saleExp  = Number(p.expectedSalePrice||0);
-    const totalCost= a?(a.acqAll+a.wrkTotal+(a.holdingTotal||0)):Number(p.purchasePrice||0);
-    const netProfit= a?(a.netProfit||0):0;
-    const roi      = a?Math.round(a.roiNet||0):0;
+    const k=getApiKey();
+    // Contexto do imóvel
+    const loc=(p.parish?p.parish+', ':'')+( p.city||'Lisboa');
+    const typo=p.typology||'apartamento';
+    const area=Number(p.areaM2||0);
+    const saleExp=Number(p.expectedSalePrice||0);
+    const mc=p.marketConfig||{};
+    const extras=[];
+    if(mc.hasPool)extras.push('piscina');
+    if(mc.hasGarage)extras.push('garagem');
+    if(mc.hasGarden)extras.push('jardim');
+    if(mc.hasTerrace)extras.push('terraco');
+    if(mc.hasElevator)extras.push('elevador');
+    const cond={muito_fraco:'degradado',fraco:'usado',medio:'bom estado',bom:'renovado',premium:'novo/luxo'}[mc.conditionLevel]||'bom estado';
 
-    // PASSO 1 — JSON só com números (web search, tokens mínimos)
-    const q1=`Idealista.pt: ${typo} ${area>0?area+'m2':''} ${loc}. Preco pedido:${saleExp}€.
-Devolve JSON (valores reais de mercado, sem zeros):
-{"med":0,"psm":0,"vmin":0,"vmax":0,"n":0,"c":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"pos":0,"ok":2,"cf":2}
-med=mediana€ psm=€/m2 vmin/vmax=intervalo n=nAnuncios c=comparaveis(p=preco,a=area) pos(-2a2)=posicionamentoPreco ok(1-4)=negocio cf(1-3)=confianca`;
+    const totalInv=a?(a.acqAll+a.wrkTotal+(a.holdingTotal||0)):Number(p.purchasePrice||0);
+    const lucro=a?(a.netProfit||0):0;
+    const roi=a?Math.round(a.roiNet||0):0;
 
-    const d1=await aiCall(k,'claude-haiku-4-5-20251001',180,
-      'Pesquisa Idealista.pt. JSON only.',
-      [{role:'user',content:q1}],true);
+    // CHAMADA 1 — Pesquisa Idealista + JSON numérico puro (tokens mínimos)
+    const prompt1=`Pesquisa Idealista.pt: ${typo} ${area?area+'m2 ':''} ${loc}${extras.length?' com '+extras.join(' '):''}${cond?' estado '+cond:''}.
+Preco pedido pelo investidor: ${saleExp?saleExp+'eur':'nao definido'}.
+Responde so com JSON real (sem zeros):
+{"med":0,"psm":0,"vmin":0,"vmax":0,"n":0,"pos":0,"ok":2,"cf":2,"c":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}]}
+med=mediana mercado eur, psm=eur/m2 zona, vmin/vmax=intervalo preco realista, n=nr anuncios, pos=-2a2(posicionamento preco pedido vs mercado), ok=1-4(negocio), cf=1-3(confianca), c=3 comparaveis reais(p=preco,a=area m2). JSON ONLY.`;
 
-    const t1=(d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    if(!t1)throw new Error('Sem resposta. Verifica créditos Anthropic.');
+    const r1=await aiCall(k,'claude-haiku-4-5-20251001',200,
+      'Real estate expert Portugal. Search Idealista.pt. Return ONLY JSON.',
+      [{role:'user',content:prompt1}],true);
 
-    let r={med:0,psm:0,vmin:0,vmax:0,n:0,c:[],pos:0,ok:2,cf:2};
+    const t1=(r1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    if(!t1)throw new Error('Sem resposta da API. Verifica créditos em console.anthropic.com');
+
+    // Parse JSON robusto
+    let d={med:0,psm:0,vmin:0,vmax:0,n:0,pos:0,ok:2,cf:2,c:[]};
     try{
-      let s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
-      let d=0,si=-1,ei=-1;
+      const s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
+      let depth=0,si=-1,ei=-1;
       for(let i=0;i<s.length;i++){
-        if(s[i]==='{'){if(si<0)si=i;d++;}
-        else if(s[i]==='}'){d--;if(d===0&&si>=0){ei=i;break;}}
+        if(s[i]==='{'){if(si<0)si=i;depth++;}
+        else if(s[i]==='}'){depth--;if(d===0&&si>=0){ei=i;break;}}
       }
-      if(si>=0&&ei>si){const p2=JSON.parse(s.slice(si,ei+1));if(p2.med>0)r=p2;}
+      // fix: use depth not d
+      let dp=0,si2=-1,ei2=-1;
+      for(let i=0;i<s.length;i++){
+        if(s[i]==='{'){if(si2<0)si2=i;dp++;}
+        else if(s[i]==='}'){dp--;if(dp===0&&si2>=0){ei2=i;break;}}
+      }
+      if(si2>=0&&ei2>si2){
+        const parsed=JSON.parse(s.slice(si2,ei2+1));
+        if(parsed.med>0||parsed.psm>0)d=parsed;
+      }
     }catch(e){
-      const n=(k,f)=>{const m=t1.match(new RegExp('"'+k+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):f;};
-      r={med:n('med',0),psm:n('psm',0),vmin:n('vmin',0),vmax:n('vmax',0),
-         n:n('n',0),c:[],pos:n('pos',0),ok:n('ok',2),cf:n('cf',2)};
+      const nx=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
+      d.med=nx('med',0);d.psm=nx('psm',0);d.vmin=nx('vmin',0);d.vmax=nx('vmax',0);
+      d.n=nx('n',0);d.pos=nx('pos',0);d.ok=nx('ok',2);d.cf=nx('cf',2);
     }
-    r.ok=Math.min(4,Math.max(1,Math.round(Number(r.ok)||2)));
-    r.cf=Math.min(3,Math.max(1,Math.round(Number(r.cf)||2)));
-    r.pos=Math.min(2,Math.max(-2,Math.round(Number(r.pos)||0)));
 
-    // PASSO 2 — Texto (sem web search, barato)
-    const diffPct=r.med>0&&saleExp>0?((saleExp-r.med)/r.med*100).toFixed(1):'0';
-    const posL={'-2':'muito abaixo','-1':'abaixo','0':'dentro','1':'acima','2':'muito acima'}[String(r.pos)]||'—';
+    d.ok=Math.min(4,Math.max(1,Math.round(d.ok)||2));
+    d.cf=Math.min(3,Math.max(1,Math.round(d.cf)||2));
+    d.pos=Math.min(2,Math.max(-2,Math.round(d.pos)||0));
+    const comps=(d.c||[]).filter(x=>x.p>0);
 
-    const q2=`${typo} ${area>0?area+'m2':''} ${loc}. Pedido:${saleExp}€. Mercado:${r.med}€(${r.psm}€/m2). Dif:${diffPct}%(${posL}). Invest:${totalCost}€ Lucro:${netProfit}€ ROI:${roi}%.
-Portugues profissional imobiliario sem markdown:
-POSICIONAMENTO: (1 frase)
-RISCOS: r1/r2
-OPORTUNIDADES: o1/o2
-RESUMO: (2 paragrafos para investidores)`;
+    // CHAMADA 2 — Texto profissional (sem web search, barato)
+    const diffPct=d.med>0&&saleExp>0?((saleExp-d.med)/d.med*100).toFixed(1):'—';
+    const posLabel={'-2':'muito abaixo','-1':'abaixo do','0':'dentro do','1':'acima do','2':'muito acima'}[String(d.pos)]||'—';
+    const okLabel={1:'excelente',2:'bom',3:'razoavel',4:'fraco'}[d.ok]||'razoavel';
 
-    const d2=await aiCall(k,'claude-haiku-4-5-20251001',300,
-      'Especialista imoveis PT. Portugues.',
-      [{role:'user',content:q2}],false);
+    const prompt2=`Imovel: ${typo} ${area?area+'m2':''} ${loc}, estado ${cond}${extras.length?', '+extras.join(', '):''}
+Preco pedido: ${saleExp?saleExp+'eur':'nao definido'}${saleExp&&area?' ('+Math.round(saleExp/area)+'eur/m2)':''}
+Mediana mercado Idealista ${loc}: ${d.med?d.med+'eur ('+d.psm+'eur/m2)':'—'} | ${d.n||0} anuncios
+Intervalo mercado: ${d.vmin?d.vmin+'eur':'—'} a ${d.vmax?d.vmax+'eur':'—'}
+Posicionamento preco: ${posLabel} mercado (${diffPct}%)
+Capital investido: ${totalInv}eur | Lucro liquido: ${lucro}eur | ROI: ${roi}% | Negocio: ${okLabel}
 
-    const txt2=(d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
-    const sec=lbl=>{const m=txt2.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));return m?m[1].trim():'';};
-    r.posText=sec('POSICIONAMENTO');
-    r.ris=sec('RISCOS').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.ops=sec('OPORTUNIDADES').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.res=sec('RESUMO')||(txt2.length>30?txt2:'Analise concluida.');
+Responde em portugues profissional imobiliario, sem markdown, sem bullets:
+POSICIONAMENTO: (1 frase tecnica sobre o preco pedido vs mercado usando terminologia financeira imobiliaria)
+RISCOS: risco1 / risco2
+OPORTUNIDADES: op1 / op2
+RESUMO: (2 paragrafos executivos com dados concretos para apresentar a investidores)`;
 
-    // Normaliza nomes de campos para o showAIResult
-    r.comps=r.c||[];r.psmMed=r.psm;r.nImoveis=r.n;r.conf=r.cf;
-    r.loc=loc;r.saleExpected=saleExp;r.salePerM2=area>0&&saleExp>0?Math.round(saleExp/area):0;
-    r.totalCost=totalCost;r.netProfit=netProfit;r.roi=roi;
-    r.diffPct=Number(diffPct);r.analyzedAt=new Date().toLocaleString('pt-PT');
+    const r2=await aiCall(k,'claude-haiku-4-5-20251001',300,
+      'Especialista senior investimento imobiliario Portugal. Portugues. Terminologia financeira.',
+      [{role:'user',content:prompt2}],false);
 
-    window._aiLastResult=r;
-    _aiCache[ck]=r;
-    try{localStorage.setItem('ai_result_'+p.id,JSON.stringify(r));}catch(e){}
-    const pr=AP();if(pr){pr.aiSummary=r.res;setP(pr);}
-    showAIResult(r,p,a,ck);
+    const txt=(r2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
+    const sec=lbl=>{
+      const m=txt.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
+      return m?m[1].trim():'';
+    };
 
-  }catch(e){
-    const b=document.getElementById('aiBody');
-    if(!b)return;
-    b.innerHTML=`<div style="text-align:center;padding:40px 20px">
-      <div style="font-size:40px;margin-bottom:12px">⚠️</div>
+    const result={
+      med:d.med, psm:d.psm, vmin:d.vmin, vmax:d.vmax, n:d.n,
+      pos:d.pos, ok:d.ok, cf:d.cf, comps,
+      posText:sec('POSICIONAMENTO'),
+      ris:sec('RISCOS').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3),
+      ops:sec('OPORTUNIDADES').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3),
+      res:sec('RESUMO')||(txt.length>30?txt:'Análise concluída.'),
+      loc, typo, area, saleExp,
+      salePerM2:area>0&&saleExp>0?Math.round(saleExp/area):0,
+      totalInv, lucro, roi, diffPct:Number(diffPct)||0,
+      analyzedAt:new Date().toLocaleString('pt-PT'),
+    };
+
+    // Persiste
+    window._aiResult=result;
+    _aiCache[ck]=result;
+    try{localStorage.setItem('ai_'+p.id,JSON.stringify(result));}catch(e){}
+    const proj=AP();if(proj){proj.aiSummary=result.res;setP(proj);}
+    showAIModal(result,p,a,ck,false);
+
+  }catch(err){
+    const body=document.getElementById('aiBody');
+    if(!body)return;
+    body.innerHTML=`<div style="text-align:center;padding:40px 20px">
+      <div style="font-size:44px;margin-bottom:14px">⚠️</div>
       <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">Erro na análise</div>
-      <div style="background:var(--surface);padding:14px;border-radius:10px;font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.6">${esc(e.message)}</div>
+      <div style="background:var(--surface);padding:14px;border-radius:10px;font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.6">${esc(err.message)}</div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="document.getElementById('aiMod').remove();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod').remove();openApiKeySetup()">🔑 API Key</button>
-      </div></div>`;
+        <button class="btn btn-primary" onclick="document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove();openApiKeySetup()">🔑 API Key</button>
+      </div>
+    </div>`;
   }
 }
 
-
-
-function showAIResult(r,p,a,ck,fromCache){
-  const hdr=document.getElementById('aiMod')?.querySelector('.ai-modal-header');
-  if(hdr)hdr.innerHTML=`<div class="ai-modal-title">🤖 Análise de Mercado Concluída</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button>`;
-  const b=document.getElementById('aiBody');if(!b)return;
-
-  const med       = Number(r.med||0);
-  const psmMed    = Number(r.psmMed||0);
-  const psmMin    = Number(r.psmMin||0);
-  const psmMax    = Number(r.psmMax||0);
-  const vmin      = Number(r.vmin||0);
-  const vmax      = Number(r.vmax||0);
-  const nImoveis  = Number(r.nImoveis||0);
-  const comps     = (r.comps||[]).filter(c=>c.p>0);
-  const pos       = Number(r.pos||0);
-  const ok        = Number(r.ok||2);
-  const conf      = Number(r.conf||2);
-  const posText   = r.posText||'';
-  const risks     = (r.ris||[]).filter(Boolean);
-  const ops       = (r.ops||[]).filter(Boolean);
-  const summary   = r.res||'';
-  const saleExp   = Number(r.saleExpected||p.expectedSalePrice||0);
-  const salePerM2 = Number(r.salePerM2||0);
-  const diffPct   = Number(r.diffPct||(med>0&&saleExp>0?((saleExp-med)/med*100):0));
-  const loc       = r.loc||p.city||'';
-
-  const posConfig = {
-    '-2':{label:'Muito abaixo do mercado',color:'var(--blue)',  bg:'rgba(59,130,246,.12)', border:'rgba(59,130,246,.3)', emoji:'📉'},
-    '-1':{label:'Abaixo do mercado',      color:'var(--blue)',  bg:'rgba(59,130,246,.08)', border:'rgba(59,130,246,.2)', emoji:'⬇️'},
-     '0':{label:'Dentro do mercado',      color:'var(--good)',  bg:'rgba(16,185,129,.12)', border:'rgba(16,185,129,.3)', emoji:'✅'},
-     '1':{label:'Acima do mercado',       color:'var(--accent)',bg:'rgba(245,158,11,.12)', border:'rgba(245,158,11,.3)', emoji:'⬆️'},
-     '2':{label:'Muito acima do mercado', color:'var(--bad)',   bg:'rgba(239,68,68,.12)',  border:'rgba(239,68,68,.3)',  emoji:'🚨'},
-  };
-  const pc = posConfig[String(pos)]||posConfig['0'];
-
-  const okConfig = {
-    1:{label:'Excelente negócio',cls:'buy',  color:'var(--good)'},
-    2:{label:'Bom negócio',      cls:'buy',  color:'var(--good)'},
-    3:{label:'Negócio razoável', cls:'caution',color:'var(--accent)'},
-    4:{label:'Negócio fraco',    cls:'sell', color:'var(--bad)'},
-  };
-  const oc = okConfig[ok]||okConfig[2];
-  const confLabel = ['','Alta ●●●','Média ●●○','Baixa ●○○'][conf]||'—';
-
-  if(summary){const pr=AP();if(pr){pr.aiSummary=summary;setP(pr);}}
-
-  // Compute bar chart % position for the slider
-  let sliderPct = 50; // default centre
-  if(vmin>0&&vmax>0&&vmax>vmin&&saleExp>0){
-    sliderPct = Math.min(96,Math.max(4,((saleExp-vmin)/(vmax-vmin)*100)));
+// ── Mostrar Resultado ──────────────────────────────────────────
+function showAIModal(r,p,a,ck,fromCache){
+  // Se modal não existe, cria
+  if(!document.getElementById('aiMod')){
+    const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiMod';
+    ov.innerHTML=`<div class="ai-modal"><div class="ai-modal-header"><div class="ai-modal-title">🤖 Análise de Mercado Concluída</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button></div><div class="ai-modal-body" id="aiBody"></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  }else{
+    const hdr=document.getElementById('aiMod')?.querySelector('.ai-modal-title');
+    if(hdr)hdr.textContent='🤖 Análise de Mercado Concluída';
   }
-  const diffStr = diffPct!==0?(diffPct>0?'+':'')+diffPct.toFixed(1)+'% vs mediana':'dentro da mediana';
-  const diffColor = diffPct<-5?'var(--blue)':diffPct>5?'var(--bad)':'var(--good)';
+  window._aiResult=r;
+  const body=document.getElementById('aiBody');
+  if(!body)return;
 
-  b.innerHTML=`
-    <!-- ── POSICIONAMENTO CENTRAL ── -->
+  // Configuração visual por posicionamento
+  const posCfg={
+    '-2':{label:'Muito abaixo do mercado',color:'var(--blue)',bg:'rgba(59,130,246,.12)',border:'rgba(59,130,246,.3)',icon:'📉'},
+    '-1':{label:'Abaixo do mercado',color:'var(--blue)',bg:'rgba(59,130,246,.08)',border:'rgba(59,130,246,.2)',icon:'⬇️'},
+    '0':{label:'Dentro do mercado',color:'var(--good)',bg:'rgba(16,185,129,.12)',border:'rgba(16,185,129,.3)',icon:'✅'},
+    '1':{label:'Acima do mercado',color:'var(--accent)',bg:'rgba(245,158,11,.12)',border:'rgba(245,158,11,.3)',icon:'⬆️'},
+    '2':{label:'Muito acima do mercado',color:'var(--bad)',bg:'rgba(239,68,68,.12)',border:'rgba(239,68,68,.3)',icon:'🚨'},
+  };
+  const pc=posCfg[String(r.pos)]||posCfg['0'];
+  const okLabel={1:'Excelente negócio 🏆',2:'Bom negócio ✅',3:'Negócio razoável ⚠️',4:'Negócio fraco 🚨'}[r.ok]||'Em análise';
+  const okClass={1:'buy',2:'buy',3:'caution',4:'sell'}[r.ok]||'caution';
+  const diffStr=r.diffPct!==0?(r.diffPct>0?'+':'')+Number(r.diffPct).toFixed(1)+'% vs mediana':'igual à mediana';
+  const diffCol=r.diffPct<-5?'var(--blue)':r.diffPct>5?'var(--bad)':'var(--good)';
+
+  // Slider position
+  const slPct=r.vmin>0&&r.vmax>0&&r.vmax>r.vmin&&r.saleExp>0
+    ?Math.min(94,Math.max(6,((r.saleExp-r.vmin)/(r.vmax-r.vmin)*100)))
+    :50;
+
+  body.innerHTML=`
+    ${fromCache?`<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:var(--blue);display:flex;align-items:center;gap:8px">
+      <span>🕐</span><span>Análise de <strong>${r.analyzedAt||'sessão anterior'}</strong> — guardada automaticamente</span>
+    </div>`:''}
+
+    <!-- POSICIONAMENTO DO PREÇO — secção principal -->
     <div class="ai-section">
-      <div class="ai-section-title">🎯 Posicionamento do Preço — Idealista.pt ${esc(loc)}</div>
+      <div class="ai-section-title">🎯 Posicionamento do Preço de Venda — Idealista.pt ${esc(r.loc||'')}</div>
 
-      <!-- Comparação lado a lado -->
+      <!-- Preço pedido vs Mediana -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border)">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px">Preço pedido</div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${saleExp>0?eur(saleExp):'—'}</div>
-          ${salePerM2?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(salePerM2)}/m²</div>`:''}
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${r.saleExp>0?eur(r.saleExp):'—'}</div>
+          ${r.salePerM2?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(r.salePerM2)}/m²</div>`:''}
         </div>
         <div style="background:${pc.bg};border-radius:var(--radius-sm);padding:14px;border:1px solid ${pc.border}">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${pc.color};margin-bottom:5px">Mediana de mercado</div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${med>0?eur(med):'—'}</div>
-          ${psmMed?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(psmMed)}/m²</div>`:''}
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${r.med>0?eur(r.med):'—'}</div>
+          ${r.psm?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(r.psm)}/m²</div>`:''}
         </div>
       </div>
 
-      <!-- Veredicto posicionamento -->
-      <div style="background:${pc.color};border-radius:var(--radius-sm);padding:10px 14px;text-align:center;margin-bottom:10px">
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff">${pc.emoji} ${pc.label}</div>
+      <!-- Veredicto -->
+      <div style="background:${pc.color};border-radius:var(--radius-sm);padding:10px 14px;text-align:center;margin-bottom:12px">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff">${pc.icon} ${pc.label}</div>
         <div style="font-size:11px;color:rgba(255,255,255,.85);margin-top:2px">${diffStr}</div>
       </div>
 
-      <!-- Barra visual de posicionamento no mercado -->
-      ${vmin>0&&vmax>0?`<div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px 14px">
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:6px">
-          <span>Mínimo ${eur(vmin)}</span>
-          ${nImoveis>0?`<span>${nImoveis} imóveis no Idealista</span>`:''}
-          <span>Máximo ${eur(vmax)}</span>
+      <!-- Barra de intervalo de mercado -->
+      ${r.vmin>0&&r.vmax>0?`<div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:5px">
+          <span>Mín ${eur(r.vmin)}</span>
+          ${r.n>0?`<span style="color:var(--text2)">${r.n} anúncios no Idealista</span>`:''}
+          <span>Máx ${eur(r.vmax)}</span>
         </div>
-        <div style="position:relative;height:10px;background:linear-gradient(90deg,var(--blue),var(--good),var(--accent),var(--bad));border-radius:999px;margin-bottom:8px">
-          <!-- Mediana marker -->
-          ${med>0&&vmin>0?`<div style="position:absolute;top:-3px;left:${Math.min(96,Math.max(4,((med-vmin)/(vmax-vmin)*100))).toFixed(0)}%;transform:translateX(-50%);width:3px;height:16px;background:rgba(255,255,255,.6);border-radius:2px" title="Mediana"></div>`:''}
-          <!-- Preço pedido marker -->
-          ${saleExp>0?`<div style="position:absolute;top:-6px;left:${sliderPct.toFixed(0)}%;transform:translateX(-50%)">
-            <div style="width:4px;height:22px;background:#fff;border-radius:2px;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>
-            <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:8px;font-weight:700;color:var(--text)">Pedido</div>
+        <div style="position:relative;height:10px;background:linear-gradient(90deg,var(--blue),var(--good),var(--accent),var(--bad));border-radius:999px">
+          ${r.med>0&&r.vmin>0?`<div style="position:absolute;top:-3px;left:${Math.min(94,Math.max(6,((r.med-r.vmin)/(r.vmax-r.vmin)*100))).toFixed(0)}%;transform:translateX(-50%);width:2px;height:16px;background:rgba(255,255,255,.5);border-radius:2px" title="Mediana"></div>`:''}
+          ${r.saleExp>0?`<div style="position:absolute;top:-7px;left:${slPct.toFixed(0)}%;transform:translateX(-50%)">
+            <div style="width:4px;height:24px;background:#fff;border-radius:2px;box-shadow:0 0 6px rgba(0,0,0,.5)"></div>
+            <div style="position:absolute;top:26px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:8px;font-weight:700;color:#fff">Pedido</div>
           </div>`:''}
         </div>
-        ${psmMin&&psmMax?`<div style="font-size:10px;color:var(--muted);text-align:center">${eur(psmMin)}/m² – ${eur(psmMax)}/m²</div>`:''}
+        ${r.psm?`<div style="font-size:9px;color:var(--muted);text-align:center;margin-top:12px">${eur(r.psm)}/m² médio na zona ${esc(r.loc||'')}</div>`:''}
       </div>`:''}
 
-      ${posText?`<div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.6;padding:10px 12px;background:var(--surface);border-radius:var(--radius-sm);border-left:3px solid ${pc.color}">${esc(posText)}</div>`:''}
+      ${r.posText?`<div style="font-size:12px;color:var(--text2);padding:10px 12px;background:var(--surface);border-radius:var(--radius-sm);border-left:3px solid ${pc.color};line-height:1.6">${esc(r.posText)}</div>`:''}
     </div>
 
-    <!-- ── COMPARÁVEIS ── -->
-    ${comps.length?`<div class="ai-section">
-      <div class="ai-section-title">🏘️ Comparáveis — ${esc(loc)} · Idealista.pt</div>
-      ${comps.slice(0,5).map((c,i)=>{
+    <!-- COMPARÁVEIS IDEALISTA -->
+    ${r.comps&&r.comps.length?`<div class="ai-section">
+      <div class="ai-section-title">🏘️ Comparáveis em ${esc(r.loc||'')} — Idealista.pt</div>
+      ${r.comps.slice(0,3).map((c,i)=>{
         const cPsm=c.pm||(c.p&&c.a?Math.round(c.p/c.a):0);
-        const d2=saleExp>0&&c.p>0?((c.p-saleExp)/saleExp*100):0;
+        const dif=r.saleExp&&c.p?((c.p-r.saleExp)/r.saleExp*100):0;
         return `<div class="ai-comp-card">
           <div class="ai-comp-info">
-            <div class="ai-comp-title">Comparável ${i+1}</div>
-            <div class="ai-comp-meta">${c.a||'—'}m² · ${esc(loc)} · Idealista.pt</div>
+            <div class="ai-comp-title" style="color:var(--text)">Comparável ${i+1} — ${esc(r.typo||'Imóvel')} ${c.a||'—'}m²</div>
+            <div class="ai-comp-meta">${esc(r.loc||'')} · Idealista.pt</div>
           </div>
           <div class="ai-comp-price">
             <div class="ai-comp-val">${eur(c.p)}</div>
             <div class="ai-comp-psm">${eur(cPsm)}/m²</div>
-            ${saleExp>0?`<div style="font-size:9px;margin-top:2px;color:${d2>0?'var(--bad)':'var(--good)'}">${d2>0?'+':''}${d2.toFixed(0)}% vs pedido</div>`:''}
+            ${r.saleExp?`<div style="font-size:9px;margin-top:2px;color:${dif>0?'var(--bad)':'var(--good)'}">${dif>0?'+':''}${dif.toFixed(0)}% vs pedido</div>`:''}
           </div>
         </div>`;}).join('')}
     </div>`:''}
 
-    <!-- ── AVALIAÇÃO DO NEGÓCIO ── -->
+    <!-- AVALIAÇÃO DO NEGÓCIO -->
     <div class="ai-section">
-      <div class="ai-section-title">💼 Avaliação do Negócio</div>
-      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div class="ai-verdict ${oc.cls}">${oc.label}</div>
-        <div style="font-size:11px;color:var(--text2);text-align:right">
-          ROI líq. <strong style="color:${oc.color}">${r.roi||0}%</strong>
-          · Confiança: ${confLabel}
-          ${r.totalCost?`<div style="font-size:10px">Capital: ${eur(r.totalCost)} · Lucro: <span style="color:${(r.netProfit||0)>=0?'var(--good)':'var(--bad)'}">${eur(r.netProfit||0)}</span></div>`:''}
+      <div class="ai-section-title">💼 Avaliação do Negócio de Investimento</div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div class="ai-verdict ${okClass}">${okLabel}</div>
+        <div style="font-size:11px;color:var(--text2);text-align:right;line-height:1.6">
+          ROI líq. <strong style="color:var(--text)">${r.roi||0}%</strong> · Confiança: ${{1:'Alta ●●●',2:'Média ●●○',3:'Baixa ●○○'}[r.cf]||'—'}
+          ${r.totalInv?`<div>Capital: ${eur(r.totalInv)} · Lucro: <strong style="color:${(r.lucro||0)>=0?'var(--good)':'var(--bad)'}">${eur(r.lucro||0)}</strong></div>`:''}
         </div>
       </div>
     </div>
 
-    <!-- ── RISCOS E OPORTUNIDADES ── -->
-    ${risks.length||ops.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${risks.length?`<div><div class="ai-section-title" style="margin-bottom:6px">⚠️ Riscos</div>${risks.map(r=>`<div class="ai-alert-item warning" style="margin-bottom:4px"><span>⚠</span><span style="font-size:11px">${esc(r)}</span></div>`).join('')}</div>`:''}
-      ${ops.length?`<div><div class="ai-section-title" style="margin-bottom:6px">💡 Oportunidades</div>${ops.map(o=>`<div class="ai-alert-item ok" style="margin-bottom:4px"><span>✓</span><span style="font-size:11px">${esc(o)}</span></div>`).join('')}</div>`:''}
+    <!-- RISCOS & OPORTUNIDADES -->
+    ${r.ris?.length||r.ops?.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      ${r.ris?.length?`<div><div class="ai-section-title" style="margin-bottom:6px">⚠️ Riscos</div>${r.ris.map(x=>`<div class="ai-alert-item warning" style="margin-bottom:4px"><span>⚠</span><span style="font-size:11px">${esc(x)}</span></div>`).join('')}</div>`:''}
+      ${r.ops?.length?`<div><div class="ai-section-title" style="margin-bottom:6px">💡 Oportunidades</div>${r.ops.map(x=>`<div class="ai-alert-item ok" style="margin-bottom:4px"><span>✓</span><span style="font-size:11px">${esc(x)}</span></div>`).join('')}</div>`:''}
     </div>`:''}
 
-    <!-- ── RESUMO EXECUTIVO ── -->
+    <!-- RESUMO EXECUTIVO -->
     <div class="ai-section">
-      <div class="ai-section-title">📄 Resumo Executivo</div>
-      <div class="ai-exec" style="max-height:none;overflow:visible">${esc(summary)}</div>
+      <div class="ai-section-title">📄 Resumo Executivo para Investidores</div>
+      <div class="ai-exec" style="max-height:none">${esc(r.res||'')}</div>
     </div>
 
-    <!-- ── ACÇÃO PRINCIPAL ── -->
-    ${fromCache?`<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--blue);display:flex;align-items:center;gap:8px"><span>🕐</span><span>Análise de <strong>${r.analyzedAt||'sessão anterior'}</strong> — guardada automaticamente</span></div>`:''}
-    <div style="padding:4px 0 20px">
+    <!-- ACÇÕES -->
+    <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0 20px">
       <button class="btn btn-primary" style="justify-content:center;width:100%;padding:14px"
-        onclick="exportAIPDF(AP(),analyze(AP()),window._aiLastResult)">
+        onclick="exportAIPDF(AP(),analyze(AP()),window._aiResult)">
         📑 Exportar Relatório PDF para Investidores
       </button>
-      <button class="btn btn-ghost btn-sm" style="justify-content:center;width:100%;margin-top:8px"
-        onclick="try{localStorage.removeItem('ai_result_'+AP()?.id);}catch(e){};delete _aiCache['${ck}'];window._aiLastResult=null;document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">
+      <button class="btn btn-ghost btn-sm" style="justify-content:center;width:100%"
+        onclick="try{localStorage.removeItem('ai_'+AP()?.id);}catch(e){}delete _aiCache[Object.keys(_aiCache).find(k=>k.includes(AP()?.id))];window._aiResult=null;document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">
         🔄 Gerar nova análise
       </button>
     </div>`;
 }
 
+// ── Alertas Inteligentes ───────────────────────────────────────
+function computeSmartAlerts(p,a){
+  if(!p||!a)return[];
+  const al=[],today=new Date();
+  if(a.roi>0&&a.roi<10)al.push({type:'danger',icon:'🚨',msg:`ROI bruto ${pct(a.roi)} abaixo de 10%.`});
+  else if(a.roi>=10&&a.roi<15)al.push({type:'warning',icon:'⚠️',msg:`ROI bruto ${pct(a.roi)} abaixo do benchmark PT (15%).`});
+  if(p.purchasePrice>0&&a.wrkTotal>0){const r=a.wrkTotal/p.purchasePrice*100;if(r>50)al.push({type:'danger',icon:'🔨',msg:`Obras ${r.toFixed(0)}% do preço — risco elevado.`});else if(r>35)al.push({type:'warning',icon:'🔨',msg:`Obras ${r.toFixed(0)}% do preço — acima do recomendado.`});}
+  if(p.targetExitDate){const d=Math.round((new Date(p.targetExitDate)-today)/864e5);if(d<0)al.push({type:'danger',icon:'📅',msg:`Saída ultrapassada há ${Math.abs(d)} dias.`});else if(d<30)al.push({type:'warning',icon:'📅',msg:`Saída em ${d} dias.`});}
+  if(!p.expectedSalePrice)al.push({type:'warning',icon:'💡',msg:'Preço de venda esperado não definido.'});
+  if(a.invRes?.length&&Math.abs(a.splitSum-100)>0.5)al.push({type:'danger',icon:'👥',msg:`Split soma ${pct(a.splitSum)} — deve ser 100%.`});
+  return al;
+}
 
-
+// ── Export PDF ─────────────────────────────────────────────────
 async function exportAIPDF(p,a,ai){
   if(!p||!a){showToast('Sem dados para exportar');return;}
   showToast('A gerar PDF...');
   try{
     const{jsPDF}=window.jspdf;
-    if(!jsPDF)throw new Error('jsPDF nao carregado');
     const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
-    const W=doc.internal.pageSize.getWidth();
-    const H=doc.internal.pageSize.getHeight();
-    const M=16;
-    // Cores
+    const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=16;
     const DK=[55,62,67],WH=[255,255,255],BK=[15,23,42];
     const AM=[245,158,11],BL=[59,130,246],GR=[16,185,129],RD=[239,68,68],PU=[139,92,246];
-    const GY=[148,163,184],LG=[248,250,252],LGBORDER=[220,225,230];
+    const GY=[148,163,184],LG=[248,250,252];
     let y=0;
 
-    // Helper: nova pagina se necessario
-    const checkPage=(needed)=>{
-      if(y+needed>H-22){addFooterPage(doc,W,H,M);doc.addPage();y=20;return true;}
-      return false;
-    };
+    const newPage=()=>{addFooterPage(doc,W,H,M);doc.addPage();y=20;};
+    const chkY=(need)=>{if(y+need>H-22)newPage();};
 
-    // Helper: linha separadora
-    const hr=()=>{
-      doc.setDrawColor(...LGBORDER);doc.setLineWidth(0.3);
-      doc.line(M,y,W-M,y);y+=5;
-    };
-
-    // ── CAPA ─────────────────────────────────────────────────
+    // CAPA
     doc.setFillColor(...DK);doc.rect(0,0,W,55,'F');
     doc.setFillColor(...AM);doc.rect(0,52,W,3,'F');
-    if(typeof LOGO!=='undefined'&&LOGO){
-      try{doc.addImage(LOGO,'PNG',W/2-16,7,32,32);}catch(e){}
-    }
+    if(typeof LOGO!=='undefined'&&LOGO){try{doc.addImage(LOGO,'PNG',W/2-16,7,32,32);}catch(e){}}
     doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
     doc.text('RELATORIO DE INVESTIMENTO IMOBILIARIO',W/2,48,{align:'center'});
-
-    y=65;
-    // Nome do projecto
-    const nLines=doc.splitTextToSize(p.name||'Projecto de Investimento',W-M*2);
+    y=66;
+    const nameLines=doc.splitTextToSize(p.name||'Projecto',W-M*2);
     doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...BK);
-    doc.text(nLines,M,y);y+=nLines.length*7+5;
-
-    // Meta linha
-    const metaParts=[p.city,p.parish,p.typology,p.areaM2?p.areaM2+'m2':'',p.strategy].filter(Boolean);
+    doc.text(nameLines,M,y);y+=nameLines.length*7+4;
+    const meta=[p.city,p.parish,p.typology,p.areaM2?p.areaM2+'m2':'',p.strategy].filter(Boolean).join(' · ');
     doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(...GY);
-    doc.text(metaParts.join('  ·  '),M,y);y+=5;
-    doc.setFontSize(8);
+    doc.text(meta,M,y);y+=5;
     doc.text('Gerado em '+new Date().toLocaleDateString('pt-PT')+' · PropInvest Pro · Tessa Advisors',M,y);y+=10;
-    doc.setDrawColor(...AM);doc.setLineWidth(0.6);doc.line(M,y,W-M,y);y+=8;
+    doc.setDrawColor(...AM);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=8;
 
-    // ── BANNER VEREDICTO AI ───────────────────────────────────
-    const aiVerdict=ai&&(Number(ai.ok)||0);
-    if(aiVerdict){
-      const vc={excellent:GR,good:GR,fair:AM,poor:RD}[aiVerdict]||AM;
-      // Fundo simples sem opacity
-      doc.setFillColor(vc[0],vc[1],vc[2]);doc.rect(M,y-2,W-M*2,18,'F');
-      doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(...WH);
-      const vLabel={excellent:'EXCELENTE NEGOCIO ★',good:'BOM NEGOCIO ✓',fair:'NEGOCIO RAZOAVEL',poor:'NEGOCIO FRACO'}[aiVerdict]||'EM ANALISE';
-      doc.text(vLabel,W/2,y+7,{align:'center'});
+    // BANNER AI
+    if(ai){
+      const posCols={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD};
+      const posLbls={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO','0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'};
+      const posC=posCols[String(ai.pos)]||AM;
+      doc.setFillColor(...posC);doc.rect(M,y,W-M*2,22,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...WH);
+      doc.text(posLbls[String(ai.pos)]||'ANALISE DE MERCADO',W/2,y+8,{align:'center'});
       doc.setFontSize(8);doc.setFont('helvetica','normal');
-      const recLabel=(ai.rec||'—').toUpperCase();
-      doc.text('Recomendacao: '+recLabel+'   Confianca: '+(ai.conf||'—').toUpperCase(),W/2,y+13,{align:'center'});
-      y+=24;
+      doc.text('Preco pedido: '+eur(ai.saleExp||0)+'  |  Mediana mercado: '+eur(ai.med||0)+'  |  Diff: '+(ai.diffPct>0?'+':'')+Number(ai.diffPct||0).toFixed(1)+'%',W/2,y+16,{align:'center'});
+      y+=28;
     }
 
-    // ── KPIs ─────────────────────────────────────────────────
-    checkPage(60);
+    // KPIs
     const roi=a.roiNet||0;
-    const profColor=(a.netProfit||0)>=0?GR:RD;
-    const roiColor=roi>=20?GR:roi>=10?AM:RD;
     const kpis=[
       {l:'Aquisicao All-In',v:eur(a.acqAll),s:p.areaM2?eur(Math.round(a.acqAll/p.areaM2))+'/m2':'',c:AM},
-      {l:'Capital Total',v:eur(a.capTotal),s:(a.invRes&&a.invRes.length||0)+' investidor(es)',c:BL},
-      {l:'Lucro Liquido',v:eur(a.netProfit||0),s:'ROI liq. '+pct(roi),c:profColor},
-      {l:'ROI Liquido',v:pct(roi),s:'Pos-imposto IRS',c:roiColor},
+      {l:'Capital Investido',v:eur(a.capTotal),s:(a.invRes?.length||0)+' invest.',c:BL},
+      {l:'Lucro Liquido',v:eur(a.netProfit||0),s:'ROI '+pct(roi),c:(a.netProfit||0)>=0?GR:RD},
+      {l:'ROI Liquido',v:pct(roi),s:'Pos-imposto',c:roi>=20?GR:roi>=10?AM:RD},
     ];
     const kW=(W-M*2-8)/2,kH=22;
     kpis.forEach((k,i)=>{
       const kx=M+(i%2)*(kW+8),ky=y+Math.floor(i/2)*(kH+5);
       doc.setFillColor(...LG);doc.rect(kx,ky,kW,kH,'F');
       doc.setFillColor(...k.c);doc.rect(kx,ky,2,kH,'F');
-      doc.setDrawColor(...LGBORDER);doc.setLineWidth(0.2);doc.rect(kx,ky,kW,kH,'S');
-      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);
-      doc.text(k.l.toUpperCase(),kx+4,ky+6);
-      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...BK);
-      doc.text(k.v,kx+4,ky+15);
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);doc.text(k.l.toUpperCase(),kx+4,ky+6);
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...BK);doc.text(k.v,kx+4,ky+15);
       if(k.s){doc.setFontSize(6.5);doc.setFont('helvetica','normal');doc.setTextColor(...GY);doc.text(k.s,kx+4,ky+20);}
     });
     y+=kH*2+5*2+8;
 
-    // ── DECOMPOSICAO DE CUSTOS ────────────────────────────────
-    checkPage(30);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
-    doc.text('DECOMPOSICAO DO INVESTIMENTO',M,y);y+=5;
-    const costRows=[
+    // DECOMPOSIÇÃO INVESTIMENTO
+    chkY(40);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('DECOMPOSICAO DO INVESTIMENTO',M,y);y+=5;
+    const invRows=[
       ['Preco de compra',eur(p.purchasePrice||0)],
-      ['Custos de aquisicao (IMT, IS, registos)',eur((a.lg?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0))],
+      ['Impostos e custos aquisicao',eur((a.lg?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0))],
       ['Obras e reabilitacao',eur(a.wrkTotal||0)],
       ['Custos de financiamento',eur(a.financingInterestHolding||0)],
       ['Holding/manutencao',eur(a.holdingTotal||0)],
       ['TOTAL INVESTIDO',eur(a.capTotal||0)],
     ];
-    costRows.forEach(([l,v],i)=>{
-      const isTotal=l.startsWith('TOTAL');
-      doc.setFont('helvetica',isTotal?'bold':'normal');
-      doc.setFontSize(isTotal?9:8);
-      if(isTotal){doc.setFillColor(...DK);doc.rect(M,y-3,W-M*2,9,'F');doc.setTextColor(...WH);}
-      else{if(i%2===0){doc.setFillColor(...LG);doc.rect(M,y-3,W-M*2,8,'F');}doc.setTextColor(isTotal?WH[0]:BK[0],isTotal?WH[1]:BK[1],isTotal?WH[2]:BK[2]);}
+    invRows.forEach(([l,v],i)=>{
+      const hi=l.startsWith('TOTAL');
+      if(hi){doc.setFillColor(...DK);doc.rect(M,y-3,W-M*2,9,'F');doc.setTextColor(...WH);}
+      else{if(i%2===0){doc.setFillColor(...LG);doc.rect(M,y-3,W-M*2,8,'F');}doc.setTextColor(...GY);}
+      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8);
       doc.text(l,M+3,y+2);doc.text(v,W-M-3,y+2,{align:'right'});
-      y+=isTotal?10:8;
-    });
-    y+=6;
+      y+=hi?10:8;
+    });y+=6;
 
-    // ── WATERFALL ─────────────────────────────────────────────
-    checkPage(80);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
-    doc.text('WATERFALL FINANCEIRO',M,y);y+=5;
-    const wfRows=[
-      ['Venda de referencia',eur(a.saleRef||0),true,false],
-      ['Comissao AMI + custos venda','-'+eur((a.ami||0)+(a.saleOth||0)),false,false],
-      ['Venda liquida',eur(a.saleNet||0),true,false],
-      ['Capital a reembolsar','-'+eur(a.capTotal||0),false,false],
-      ['Lucro bruto',(a.profit>=0?'':'-')+eur(Math.abs(a.profit||0)),(a.profit||0)>=0,false],
-      ['Imposto mais-valias (50%x28%)','-'+eur(a.taxTotal||0),false,false],
+    // WATERFALL
+    chkY(70);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('WATERFALL FINANCEIRO',M,y);y+=5;
+    const wf=[
+      ['Venda referencia',eur(a.saleRef||0),true],
+      ['Comissao + custos venda','-'+eur((a.ami||0)+(a.saleOth||0)),false],
+      ['Venda liquida',eur(a.saleNet||0),true],
+      ['Capital a reembolsar','-'+eur(a.capTotal||0),false],
+      ['Lucro bruto',(a.profit||0)>=0?eur(a.profit||0):'-'+eur(Math.abs(a.profit||0)),(a.profit||0)>=0],
+      ['Imposto mais-valias (50%x28%)','-'+eur(a.taxTotal||0),false],
       ['LUCRO LIQUIDO POS-IMPOSTO',eur(a.netProfit||0),(a.netProfit||0)>=0,true],
     ];
-    wfRows.forEach(([l,v,pos,hi],i)=>{
+    wf.forEach(([l,v,pos,hi],i)=>{
       const ry=y;
-      if(hi){
-        doc.setFillColor(...GR);doc.rect(M,ry-3,W-M*2,9,'F');
-        doc.setTextColor(...WH);
-      }else if(i%2===0){
-        doc.setFillColor(...LG);doc.rect(M,ry-3,W-M*2,8,'F');
-        doc.setTextColor(...GY);
-      }else{
-        doc.setTextColor(...GY);
-      }
+      if(hi){doc.setFillColor(...GR);doc.rect(M,ry-3,W-M*2,9,'F');doc.setTextColor(...WH);}
+      else if(i%2===0){doc.setFillColor(...LG);doc.rect(M,ry-3,W-M*2,8,'F');doc.setTextColor(...GY);}
+      else doc.setTextColor(...GY);
       doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8);
-      if(hi)doc.setTextColor(...WH);
-      else doc.setTextColor(...(hi?WH:GY));
       doc.text(l,M+3,ry+2);
-      doc.setTextColor(...(pos?GR:RD));if(hi)doc.setTextColor(...WH);
-      doc.text(v,W-M-3,ry+2,{align:'right'});
+      doc.setTextColor(...(hi?WH:(pos?GR:RD)));doc.text(v,W-M-3,ry+2,{align:'right'});
       y+=hi?10:8;
-    });
-    y+=8;
+    });y+=8;
 
-    // ── ESTRUTURA DE CUSTOS (barras) ──────────────────────────
-    checkPage(55);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
-    doc.text('ESTRUTURA DE CUSTOS',M,y);y+=6;
-    const costBars=[
-      ['Aquisicao',a.acqAll||0,AM],
-      ['Obras',a.wrkTotal||0,BL],
-      ['Venda/Comissoes',(a.ami||0)+(a.saleOth||0),RD],
-      ['Imposto',a.taxTotal||0,PU],
-    ];
-    const totCosts=costBars.reduce((s,c)=>s+(c[1]||0),0);
-    const barMaxW=W-M*2-55;
-    costBars.forEach(([l,v,c])=>{
-      const pv=totCosts>0?(v/totCosts):0;
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);
-      doc.text(l,M,y+3);
-      doc.setFillColor(...LGBORDER);doc.rect(M+38,y-1,barMaxW,6,'F');
-      if(pv>0){doc.setFillColor(...c);doc.rect(M+38,y-1,barMaxW*pv,6,'F');}
-      doc.setFont('helvetica','bold');doc.setTextColor(...c);
-      doc.text(eur(v),W-M,y+3,{align:'right'});
-      y+=10;
-    });
-    y+=5;
-
-    // ── FISCAL ────────────────────────────────────────────────
-    checkPage(55);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
-    doc.text('APURAMENTO FISCAL — IRS Cat. G (Art. 43 CIRS)',M,y);y+=4;
+    // FISCAL
+    chkY(50);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('APURAMENTO FISCAL — IRS Cat. G (Art. 43 CIRS)',M,y);y+=4;
     doc.autoTable({
-      startY:y,
-      head:[['Rubrica','Valor']],
-      body:[
-        ['Lucro bruto',eur(a.profit||0)],
-        ['Base tributavel (inclusao 50%)',eur(a.taxableGain||0)],
-        ['Taxa autonoma mais-valias','28%'],
-        ['Taxa efectiva sobre lucro','14% (50% x 28%)'],
-        ['Imposto estimado','-'+eur(a.taxTotal||0)],
-        ['Lucro liquido pos-imposto',eur(a.netProfit||0)],
-      ],
-      theme:'striped',
-      styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
+      startY:y,head:[['Rubrica','Valor']],
+      body:[['Lucro bruto',eur(a.profit||0)],['Base tributavel (50%)',eur(a.taxableGain||0)],['Taxa autonoma','28%'],['Taxa efectiva','14% (50%x28%)'],['Imposto estimado','-'+eur(a.taxTotal||0)],['Lucro liquido pos-imposto',eur(a.netProfit||0)]],
+      theme:'striped',styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
       headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold'},
-      columnStyles:{1:{halign:'right',fontStyle:'bold'}},
-      margin:{left:M,right:M},
+      columnStyles:{1:{halign:'right',fontStyle:'bold'}},margin:{left:M,right:M}
     });
     y=doc.lastAutoTable.finalY+10;
 
-    // ── AVALIACAO DE MERCADO IA ───────────────────────────────
-    if(ai&&(Number(ai.med)||Number(ai.val)||ai.marketValuation)){
-      const aiMed=ai.med||ai.val||ai.marketValuation||0;
-      const aiVmin=ai.vmin||ai.marketValuationMin||0;
-      const aiVmax=ai.vmax||ai.marketValuationMax||0;
-      const aiPsm=ai.psmMed||ai.psm||ai.marketPricePerM2||0;
-      const aiComps=(ai.comps||ai.comparables||[]).filter(c=>c.p>0);
-      const aiRisks=(ai.ris||ai.risks||[]).filter(Boolean);
-      const aiOps=(ai.ops||ai.opportunities||[]).filter(Boolean);
-      const aiSummary=ai.res||ai.summary||ai.executiveSummary||'';
-      const aiSaleExp=ai.saleExpected||0;
-      const aiPos=Number(ai.pos||0);
-      const aiPosText=ai.posText||'';
-      const aiLoc=String(ai.loc||p.city||'').replace(/[^\w\s,.-]/g,'');
-      const aiNetProfit=Number(ai.netProfit||0);
-      const aiRoi=Number(ai.roi||0);
-
-      checkPage(50);
-      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);
-      doc.text('AVALIACAO DE MERCADO — PESQUISA IDEALISTA.PT',M,y);y+=5;
-
-      // Caixa de valor de mercado
-      // Caixa posicionamento de preco de venda
-      const posLbls={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO',
-        '0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'};
-      const posCols={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD};
-      const posC=posCols[String(aiPos)]||AM;
-      doc.setFillColor(...posC);doc.rect(M,y,W-M*2,28,'F');
-      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...WH);
-      doc.text('POSICIONAMENTO DO PRECO DE VENDA',M+4,y+6);
-      doc.setFontSize(13);
-      doc.text(posLbls[String(aiPos)]||'EM ANALISE',M+4,y+15);
-      doc.setFont('helvetica','normal');doc.setFontSize(8);
-      doc.text('Preco pedido: '+eur(aiSaleExp)+
-        '   Mediana mercado ('+aiLoc+'): '+eur(aiMed)+
-        '   Intervalo: '+eur(aiVmin)+' - '+eur(aiVmax),M+4,y+23);
-      y+=33;
-      if(aiPosText){
-        doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(...GY);
-        const ptL=doc.splitTextToSize(aiPosText,W-M*2-4);
-        doc.text(ptL,M,y);y+=ptL.length*4.5+6;
+    // SECÇÃO AI
+    if(ai&&(ai.med>0||ai.saleExp>0)){
+      chkY(50);
+      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('ANALISE DE MERCADO — IDEALISTA.PT',M,y);y+=5;
+      // Caixa de posicionamento
+      const posC2={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD}[String(ai.pos)]||AM;
+      const posT2={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO','0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'}[String(ai.pos)]||'EM ANALISE';
+      doc.setFillColor(...posC2);doc.rect(M,y,W-M*2,24,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...WH);
+      doc.text(posT2,M+4,y+7);
+      doc.setFontSize(8);doc.setFont('helvetica','normal');
+      doc.text('Preco pedido: '+eur(ai.saleExp||0)+(ai.salePerM2?' ('+eur(ai.salePerM2)+'/m2)':''),M+4,y+14);
+      doc.text('Mediana mercado '+String(ai.loc||'').replace(/[^\w\s,.-]/g,'')+(ai.psm?' ('+eur(ai.psm)+'/m2)':'')+(ai.n?' | '+ai.n+' anuncios':''),M+4,y+20);
+      y+=30;
+      if(ai.posText){
+        doc.setFont('helvetica','italic');doc.setFontSize(8.5);doc.setTextColor(...GY);
+        const pl=doc.splitTextToSize(ai.posText,W-M*2-4);
+        doc.text(pl,M,y);y+=pl.length*4.5+6;
       }
-      // Resumo financeiro abaixo da caixa
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);
-      doc.text('Capital investido: '+eur(a.capTotal||0)+
-        '   Lucro liquido estimado: '+eur(aiNetProfit)+
-        '   ROI liquido: '+aiRoi+'%',M,y);
-      y+=8;
-
       // Comparáveis
-      if(aiComps.length){
-        checkPage(40);
-        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...DK);
-        doc.text('Comparaveis encontrados no Idealista.pt',M,y);y+=3;
+      if(ai.comps&&ai.comps.length){
+        chkY(35);
+        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...DK);doc.text('Comparaveis Idealista.pt — '+String(ai.loc||'').replace(/[^\w\s,.-]/g,''),M,y);y+=3;
         doc.autoTable({
-          startY:y,
-          head:[['No','Area','Preco','Euro/m2']],
-          body:aiComps.slice(0,6).map((c,i)=>[
-            String(i+1)+'.',
-            ((c.a||c.area||0))+'m2',
-            eur(c.p||c.price||0),
-            eur(c.pm||c.pricePerM2||(c.p&&c.a?Math.round(c.p/c.a):0)||0),
-          ]),
-          theme:'grid',
-          styles:{fontSize:8,cellPadding:2,font:'helvetica',textColor:BK},
+          startY:y,head:[['N','Area','Preco de Venda','Eur/m2','vs Pedido']],
+          body:ai.comps.slice(0,3).map((c,i)=>{
+            const cp=c.p||0,ca=c.a||0,cpm=ca>0?Math.round(cp/ca):0;
+            const dif=ai.saleExp&&cp?((cp-ai.saleExp)/ai.saleExp*100):0;
+            return[String(i+1)+'.',ca+'m2',eur(cp),eur(cpm),(dif!==0?(dif>0?'+':'')+dif.toFixed(0)+'%':'—')];
+          }),
+          theme:'grid',styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
           headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold',fontSize:8},
           alternateRowStyles:{fillColor:LG},
-          columnStyles:{
-            0:{cellWidth:10},
-            2:{halign:'right',fontStyle:'bold'},
-            3:{halign:'right',textColor:AM[0]+','+AM[1]+','+AM[2]},
-          },
-          margin:{left:M,right:M},
+          columnStyles:{0:{cellWidth:10},2:{halign:'right',fontStyle:'bold'},3:{halign:'right'},4:{halign:'right'}},
+          margin:{left:M,right:M}
         });
         y=doc.lastAutoTable.finalY+8;
       }
-
-      // Riscos e Oportunidades
-      const validRisks=aiRisks.filter(Boolean);
-      const validOps=aiOps.filter(Boolean);
-      if(validRisks.length||validOps.length){
-        checkPage(40);
+      // Riscos & Ops
+      if((ai.ris?.length||ai.ops?.length)){
+        chkY(30);
         const hw=(W-M*2-6)/2;
-        // Riscos
-        if(validRisks.length){
-          doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...RD);
-          doc.text('RISCOS',M,y);
-          doc.setFont('helvetica','normal');doc.setTextColor(...BK);
-          let ry=y+4;
-          validRisks.forEach(r=>{
-            const lines=doc.splitTextToSize('• '+r,hw);
-            doc.setFontSize(8);doc.text(lines,M,ry);ry+=lines.length*4.5+2;
-          });
-        }
-        // Oportunidades
-        if(validOps.length){
-          doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...GR);
-          doc.text('OPORTUNIDADES',M+hw+6,y);
-          doc.setFont('helvetica','normal');doc.setTextColor(...BK);
-          let oy=y+4;
-          validOps.forEach(o=>{
-            const lines=doc.splitTextToSize('• '+o,hw);
-            doc.setFontSize(8);doc.text(lines,M+hw+6,oy);oy+=lines.length*4.5+2;
-          });
-        }
-        y+=Math.max(validRisks.length,validOps.length)*14+8;
+        if(ai.ris?.length){doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...RD);doc.text('RISCOS',M,y);}
+        if(ai.ops?.length){doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...GR);doc.text('OPORTUNIDADES',M+hw+6,y);}
+        y+=4;
+        const maxR=Math.max(ai.ris?.length||0,ai.ops?.length||0);
+        for(let i=0;i<maxR;i++){
+          const rv=(ai.ris||[])[i]||'',ov=(ai.ops||[])[i]||'';
+          doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...BK);
+          if(rv){const l=doc.splitTextToSize('• '+rv,hw);doc.text(l,M,y);}
+          if(ov){const l=doc.splitTextToSize('• '+ov,hw);doc.text(l,M+hw+6,y);}
+          y+=9;
+        }y+=4;
       }
-
-      // Resumo Executivo
-      if(aiSummary){
-        checkPage(40);
-        // Banner escuro
+      // Resumo executivo
+      if(ai.res){
+        chkY(40);
         doc.setFillColor(...DK);doc.rect(M,y,W-M*2,9,'F');
         doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...WH);
         doc.text('RESUMO EXECUTIVO PARA INVESTIDORES',M+3,y+6);y+=13;
-
         doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...BK);
-        const sumLines=doc.splitTextToSize(aiSummary,W-M*2-4);
-        sumLines.forEach(line=>{
-          if(y>H-22){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
-          doc.text(line,M+2,y);y+=5;
-        });
+        const sl=doc.splitTextToSize(ai.res,W-M*2-4);
+        sl.forEach(l=>{if(y>H-22){newPage();}doc.text(l,M+2,y);y+=5;});
         y+=6;
       }
     }
 
-    // ── AVISO LEGAL ───────────────────────────────────────────
-    checkPage(20);
-    doc.setFillColor(...LG);doc.rect(M,y,W-M*2,16,'F');
+    // AVISO LEGAL
+    chkY(18);
+    doc.setFillColor(...LG);doc.rect(M,y,W-M*2,14,'F');
     doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GY);
-    const disc=doc.splitTextToSize(
-      'AVISO LEGAL: Este relatorio tem caracter informativo e nao constitui aconselhamento financeiro, fiscal ou juridico. '+
-      'Os valores apresentados sao estimativas baseadas nos dados inseridos pelo utilizador. '+
-      'As obrigacoes fiscais devem ser confirmadas com contabilista ou advogado fiscal certificado. '+
-      'Investir em imoveis implica riscos de perda de capital. PropInvest Pro - Tessa Advisors.',
-      W-M*2-6
-    );
-    doc.text(disc,M+3,y+5);y+=18;
+    const disc=doc.splitTextToSize('AVISO LEGAL: Relatorio informativo. Nao constitui aconselhamento financeiro ou juridico. Valores estimados. Confirmar obrigacoes fiscais com profissional. PropInvest Pro - Tessa Advisors.',W-M*2-6);
+    doc.text(disc,M+3,y+4);
 
-    // ── FOOTERS EM TODAS AS PAGINAS ───────────────────────────
-    const totalPages=doc.internal.getNumberOfPages();
-    for(let pg=1;pg<=totalPages;pg++){
-      addFooterPage(doc,W,H,M,pg,totalPages,typeof LOGO!=='undefined'?LOGO:null);
-    }
+    // FOOTERS
+    const np=doc.internal.getNumberOfPages();
+    for(let i=1;i<=np;i++)addFooterPage(doc,W,H,M,i,np,typeof LOGO!=='undefined'?LOGO:null);
 
-    // Guardar
-    const fname='TessaAdvisors_'+
-      (p.name||'Projeto').replace(/[^a-zA-Z0-9\u00C0-\u017E]/g,'_').substring(0,30)+
-      '_'+new Date().toISOString().slice(0,10)+'.pdf';
-    doc.save(fname);
-    showToast('PDF gerado com sucesso!');
+    doc.save('TessaAdvisors_'+(p.name||'Relatorio').replace(/[^a-zA-Z0-9]/g,'_').slice(0,25)+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+    showToast('✅ PDF gerado com sucesso!');
     document.getElementById('aiMod')?.remove();
-
-  }catch(err){
-    console.error('PDF error:',err);
-    showToast('Erro PDF: '+err.message);
+  }catch(e){
+    showToast('Erro PDF: '+e.message);
+    console.error('PDF error:',e);
   }
 }
 
-
-
-async function shareProject(p,a){
-  if(!p||!a)return showToast('Sem dados');
-  if(!DB||!CURRENT_USER)return showToast('Necessário login');
-  showToast('A gerar relatório...');
-  try{
-    const sid='ti'+Date.now().toString(36)+Math.random().toString(36).substr(2,6);
-    const aiR=Object.values(_aiCache)[0]||null;
-    await DB.collection('shared_reports').doc(sid).set({
-      html:buildShareHtml(p,a,aiR,sid),
-      projectName:p.name||'Projeto',
-      createdBy:CURRENT_USER.email,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-      expiresAt:new Date(Date.now()+30*24*60*60*1000)
-    });
-    const link=location.origin+location.pathname+'?share='+sid;
-    window._sl=link;
-    const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='shMod';
-    ov.innerHTML=`<div class="ai-modal" style="max-height:55dvh"><div class="ai-modal-header"><div class="ai-modal-title">🔗 Relatório Partilhado</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('shMod').remove()" style="font-size:18px;padding:4px 8px">✕</button></div><div class="ai-modal-body"><div style="font-size:13px;color:var(--text2);margin-bottom:14px">Relatório de <strong style="color:var(--text)">${esc(p.name||'Projeto')}</strong> pronto. Válido 30 dias.</div><div class="ai-share-link" style="cursor:pointer;word-break:break-all" onclick="navigator.clipboard.writeText(window._sl).then(()=>showToast('Copiado!'))">${esc(link)}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(window._sl).then(()=>showToast('✅ Copiado!'))" style="justify-content:center">📋 Copiar</button><button class="btn btn-primary btn-sm" onclick="window.open(window._sl,'_blank')" style="justify-content:center">👁️ Ver</button></div></div></div>`;
-    document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
-  }catch(e){showToast('Erro: '+e.message);}
-}
-
-function buildShareHtml(p,a,ai,sid){
-  const dt=new Date().toLocaleDateString('pt-PT'),roi=a.roiNet||0;
-  const rC=roi>=20?'#10b981':roi>=10?'#f59e0b':'#ef4444',pC=(a.netProfit||0)>=0?'#10b981':'#ef4444';
-  const tot=a.acqAll+a.wrkTotal+(a.ami+(a.saleOth||0))+a.taxTotal;
-  const bars=[['Aquisicao',a.acqAll,'#f59e0b'],['Obras',a.wrkTotal,'#3b82f6'],['Venda',a.ami+(a.saleOth||0),'#ef4444'],['Imposto',a.taxTotal,'#8b5cf6']];
-  return`<!DOCTYPE html><html lang="pt-PT"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.name||'Projeto')} — Tessa Advisors</title><link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#09090f;color:#f1f5f9;font-family:'DM Sans',sans-serif}.w{max-width:720px;margin:0 auto;padding:20px 16px 60px}.h{background:linear-gradient(135deg,#17181f,#1e2030);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:22px;margin-bottom:16px}.hn{font-family:'Syne',sans-serif;font-weight:800;font-size:12px;background:linear-gradient(135deg,#fff,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px}.ht{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(18px,4vw,26px);margin-bottom:8px}.hm{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}.tg{background:rgba(255,255,255,.06);padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;color:#94a3b8}.hd{font-size:10px;color:#475569}.kg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}@media(min-width:480px){.kg{grid-template-columns:repeat(4,1fr)}}.kp{background:#17181f;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:12px}.kl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:5px}.kv{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(13px,3vw,19px);word-break:break-all}.ks{font-size:8px;color:#64748b;margin-top:2px}.sc{background:#17181f;border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:16px;margin-bottom:12px}.st{font-family:'Syne',sans-serif;font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:10px}.wr{display:flex;justify-content:space-between;align-items:center;padding:7px 9px;border-radius:8px;margin-bottom:4px;background:rgba(255,255,255,.02)}.wr.hl{background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.12)}.wl{font-size:10px;color:#94a3b8}.wv{font-family:'Syne',sans-serif;font-weight:700;font-size:11px}.br{display:flex;align-items:center;gap:7px;margin-bottom:8px}.bl{font-size:9px;color:#94a3b8;width:80px;flex-shrink:0;text-align:right}.bt{flex:1;background:rgba(255,255,255,.05);border-radius:999px;height:8px;overflow:hidden}.bf{height:100%;border-radius:999px}.bv{font-size:9px;font-weight:700;width:68px;flex-shrink:0;text-align:right}.mr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:10px}.mr:last-child{border:none}.mk{color:#94a3b8}.mv{font-weight:600}.ai{background:linear-gradient(135deg,rgba(245,158,11,.07),rgba(249,115,22,.04));border:1px solid rgba(245,158,11,.2);border-radius:14px;padding:16px;margin-bottom:12px}.ait{font-size:9px;font-weight:700;text-transform:uppercase;color:#f59e0b;margin-bottom:8px}.aix{font-size:12px;line-height:1.8;color:#cbd5e1;white-space:pre-wrap}.cc{background:#17181f;border-radius:9px;padding:9px 11px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px}.ci{min-width:0;flex:1}.ct{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cm{font-size:9px;color:#64748b;margin-top:1px}.cv{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:#f59e0b}.cs{font-size:9px;color:#64748b}.ft{text-align:center;margin-top:36px;font-size:9px;color:#334155;line-height:1.8}.fb{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:#f59e0b;margin-bottom:3px}.dc{font-size:8px;color:#1e293b;margin-top:6px;background:#0d0d14;padding:10px;border-radius:6px;text-align:left;line-height:1.6}</style></head><body><div class="w">
-<div class="h"><div class="hn">PropInvest Pro · Tessa Advisors <span style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:#f59e0b;font-size:8px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;margin-left:8px">Partilhado</span></div><div class="ht">${esc(p.name||'Projeto')}</div><div class="hm">${p.city?`<span class="tg">📍 ${esc(p.city)}${p.parish?', '+esc(p.parish):''}</span>`:''} ${p.typology?`<span class="tg">${esc(p.typology)}</span>`:''} ${p.areaM2?`<span class="tg">${p.areaM2}m²</span>`:''} <span class="tg">${esc(p.strategy)}</span>${p.targetExitDate?`<span class="tg">🎯 ${p.targetExitDate}</span>`:''}</div><div class="hd">Gerado em ${dt} · ID ${sid} · Válido 30 dias</div></div>
-<div class="kg"><div class="kp"><div class="kl">Aquisicao All-In</div><div class="kv" style="color:#f59e0b">${eur(a.acqAll)}</div>${p.areaM2?`<div class="ks">${eur(Math.round(a.acqAll/p.areaM2))}/m²</div>`:''}</div><div class="kp"><div class="kl">Capital Investido</div><div class="kv" style="color:#3b82f6">${eur(a.capTotal)}</div><div class="ks">${a.invRes.length} invest.</div></div><div class="kp"><div class="kl">Lucro Liquido</div><div class="kv" style="color:${pC}">${eur(a.netProfit||0)}</div><div class="ks">ROI ${pct(roi)}</div></div><div class="kp"><div class="kl">ROI Liquido</div><div class="kv" style="color:${rC}">${pct(roi)}</div><div class="ks">Pos-imposto</div></div></div>
-<div class="sc"><div class="st">💧 Waterfall</div><div class="wr"><span class="wl">Venda ref.</span><span class="wv" style="color:#10b981">${eur(a.saleRef)}</span></div><div class="wr"><span class="wl">Comissao+custos</span><span class="wv" style="color:#ef4444">−${eur(a.ami+(a.saleOth||0))}</span></div><div class="wr"><span class="wl">Capital reembolsar</span><span class="wv" style="color:#ef4444">−${eur(a.capTotal)}</span></div><div class="wr"><span class="wl">Imposto</span><span class="wv" style="color:#ef4444">−${eur(a.taxTotal)}</span></div><div class="wr hl"><span class="wl" style="font-weight:700;color:#f1f5f9">Lucro Liquido</span><span class="wv" style="color:${pC};font-size:13px">${eur(a.netProfit||0)}</span></div></div>
-<div class="sc"><div class="st">📊 Estrutura Custos</div>${bars.map(([l,v,c])=>{const pv=tot>0?Math.round(v/tot*100):0;return`<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${pv}%;background:${c}"></div></div><div class="bv" style="color:${c}">${eur(v)}</div></div>`;}).join('')}</div>
-<div class="sc"><div class="st">📑 Fiscal IRS Cat. G</div><div class="mr"><span class="mk">Lucro bruto</span><span class="mv">${eur(a.profit)}</span></div><div class="mr"><span class="mk">Base tributavel (50%)</span><span class="mv">${eur(a.taxableGain)}</span></div><div class="mr"><span class="mk">Taxa efectiva</span><span class="mv">14%</span></div><div class="mr"><span class="mk">Imposto</span><span class="mv" style="color:#ef4444">−${eur(a.taxTotal)}</span></div><div class="mr"><span class="mk" style="font-weight:700;color:#f1f5f9">Lucro liquido</span><span class="mv" style="color:${pC};font-size:13px">${eur(a.netProfit||0)}</span></div></div>
-${ai&&ai.comps&&ai.comps.length?`<div class="sc"><div class="st">🏘️ Comparaveis — Idealista.pt</div>${ai.comps.slice(0,5).map(c=>`<div class="cc"><div class="ci"><div class="ct">${esc(c.d||c.title||'—')}</div><div class="cm">${(c.a||c.area)||'—'}m²</div></div><div><div class="cv">${eur(c.p||c.price||0)}</div><div class="cs">${eur(c.pm||c.pricePerM2||0)}/m²</div></div></div>`).join('')}</div>`:``}
-${ai&&(ai.summary||ai.res)?`<div class="ai"><div class="ait">🤖 Análise IA · Pesquisa Idealista.pt</div><div class="aix">${esc(ai.summary||ai.res||'')}</div></div>`:''}
-<div class="ft"><div class="fb">PropInvest Pro · Tessa Advisors</div><div>Gerado em ${dt}</div><div class="dc">Aviso Legal: Relatorio informativo. Nao constitui aconselhamento financeiro ou juridico. Confirmar obrigacoes fiscais com profissional.</div></div>
-</div></body></html>`;
-}
-
+// ── Check Share Link ───────────────────────────────────────────
 function checkShareLink(){
   const sid=new URLSearchParams(location.search).get('share');
   if(!sid)return;
   if(!DB){setTimeout(checkShareLink,800);return;}
   document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;font-size:13px">A carregar...</div>';
   DB.collection('shared_reports').doc(sid).get().then(doc=>{
-    if(!doc.exists){document.body.innerHTML='<div style="text-align:center;padding:60px;background:#09090f;min-height:100vh;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🔗</div><div style="color:#f1f5f9;font-size:16px;font-weight:700">Link inválido ou expirado</div></div>';return;}
+    if(!doc.exists){document.body.innerHTML='<div style="text-align:center;padding:60px;background:#09090f;min-height:100vh;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🔗</div><div style="font-size:16px;font-weight:700;color:#f1f5f9">Link inválido ou expirado</div></div>';return;}
     document.open();document.write(doc.data().html);document.close();
   }).catch(e=>{document.body.innerHTML='<div style="padding:40px;color:#ef4444;text-align:center">Erro: '+e.message+'</div>';});
 }
+
+
 
 
 
