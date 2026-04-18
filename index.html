@@ -957,6 +957,7 @@ function nav(page){
   updateTopBar(page);
 }
 function setSub(sub){
+  if(sub==='mercado')sub='projeto';
   curSub=sub;
   document.querySelectorAll('.sub-tab').forEach(b=>b.classList.toggle('active',b.dataset.sub===sub));
   renderDetail();
@@ -1168,32 +1169,111 @@ function renderDash(p,a){
     const _saEl=document.getElementById('smartAlertsSection');
     if(_saEl&&_sa.length)_saEl.innerHTML=_sa.map(al=>`<div class='alert ${al.type==='danger'?'err':'warn'}' style='margin-bottom:6px'><span>${al.icon}</span><span>${esc(al.msg)}</span></div>`).join('');
   }
-  requestAnimationFrame(()=>{if(a)renderDashCharts(a);});
+  setTimeout(()=>{if(a)renderDashCharts(a);},150);
 }
 function dc(id){if(CHS[id]){CHS[id].destroy();delete CHS[id];}}
 function renderDashCharts(a){
   if(!a)return;
-  dc('cCosts');
-  const ctx=q('cCosts');
-  if(ctx){
-    const data=[a.acqAll,a.wrkTotal,a.ami+a.saleOth,a.taxTotal];
-    const labels=['Aquisição','Obras','Venda/Comissões','Imposto'];
-    const colors=['#f59e0b','#3b82f6','#ef4444','#8b5cf6'];
-    CHS['cCosts']=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors.map(c=>c+'cc'),borderColor:colors,borderWidth:1.5,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{family:'DM Sans',size:11},padding:14,boxWidth:10}},tooltip:{callbacks:{label:c=>`${c.label}: ${eur(c.raw)}`}}},cutout:'60%'}});
+  // Destroy and recreate each chart safely
+  function safeChart(id,config){
+    try{
+      if(CHS[id]){CHS[id].destroy();delete CHS[id];}
+      const el=q(id);
+      if(!el)return;
+      const ctx=el.getContext('2d');
+      if(!ctx)return;
+      CHS[id]=new Chart(ctx,config);
+    }catch(e){console.warn('Chart error',id,e);}
   }
-  dc('cSpecs');
-  const ctx2=q('cSpecs');
-  if(ctx2&&a.specs.length){
-    CHS['cSpecs']=new Chart(ctx2,{type:'bar',data:{labels:a.specs.map(x=>x.n),datasets:[{data:a.specs.map(x=>x.t),backgroundColor:'rgba(245,158,11,.65)',borderColor:'#f59e0b',borderWidth:1,borderRadius:5,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${eur(c.raw)}`}}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}}}});
+
+  // 1. Estrutura de Custos (doughnut)
+  safeChart('cCosts',{
+    type:'doughnut',
+    data:{
+      labels:['Aquisicao','Obras','Venda/Comissoes','Imposto'],
+      datasets:[{
+        data:[a.acqAll||0, a.wrkTotal||0, (a.ami||0)+(a.saleOth||0), a.taxTotal||0],
+        backgroundColor:['#f59e0bcc','#3b82f6cc','#ef4444cc','#8b5cf6cc'],
+        borderColor:['#f59e0b','#3b82f6','#ef4444','#8b5cf6'],
+        borderWidth:1.5,
+        hoverOffset:5
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom',labels:{color:'#94a3b8',font:{family:'DM Sans',size:11},padding:14,boxWidth:10}},
+        tooltip:{callbacks:{label:c=>`${c.label}: ${eur(c.raw)}`}}
+      },
+      cutout:'60%'
+    }
+  });
+
+  // 2. Obras por Especialidade (bar)
+  if(a.specs&&a.specs.length){
+    safeChart('cSpecs',{
+      type:'bar',
+      data:{
+        labels:a.specs.map(x=>x.n),
+        datasets:[{
+          data:a.specs.map(x=>x.t),
+          backgroundColor:'rgba(245,158,11,.65)',
+          borderColor:'#f59e0b',
+          borderWidth:1,
+          borderRadius:5,
+          borderSkipped:false
+        }]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        indexAxis:'y',
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:c=>`${eur(c.raw)}`}}
+        },
+        scales:{
+          x:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,0.04)'}},
+          y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}
+        }
+      }
+    });
   }
-  // Supplier chart
-  dc('cSuppliers');
-  const ctx3=q('cSuppliers');
-  if(ctx3&&a.suppliers&&a.suppliers.length){
+
+  // 3. Custos por Fornecedor (bar)
+  if(a.suppliers&&a.suppliers.length){
     const sColors=['#3b82f6','#8b5cf6','#10b981','#f97316','#06b6d4','#ec4899','#f59e0b','#ef4444','#a3e635','#e879f9'];
-    CHS['cSuppliers']=new Chart(ctx3,{type:'bar',data:{labels:a.suppliers.map(x=>x.n),datasets:[{data:a.suppliers.map(x=>x.t),backgroundColor:a.suppliers.map((_,i)=>sColors[i%sColors.length]+'99'),borderColor:a.suppliers.map((_,i)=>sColors[i%sColors.length]),borderWidth:1.5,borderRadius:5,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${eur(c.raw)}`}}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}}}});
+    safeChart('cSuppliers',{
+      type:'bar',
+      data:{
+        labels:a.suppliers.map(x=>x.n),
+        datasets:[{
+          data:a.suppliers.map(x=>x.t),
+          backgroundColor:a.suppliers.map((_,i)=>sColors[i%sColors.length]+'99'),
+          borderColor:a.suppliers.map((_,i)=>sColors[i%sColors.length]),
+          borderWidth:1.5,
+          borderRadius:5,
+          borderSkipped:false
+        }]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        indexAxis:'y',
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:c=>`${c.label}: ${eur(c.raw)}`}}
+        },
+        scales:{
+          x:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,0.04)'}},
+          y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}
+        }
+      }
+    });
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────
 //  DETAIL PAGE
@@ -1215,6 +1295,7 @@ function renderDetail(){
   else if(curSub==='oferta')c.innerHTML=tabOferta(p,a);
   else if(curSub==='cenarios'){c.innerHTML=tabCenarios(p,a);bindCenarios(p,a);}
   else if(curSub==='btlconfig'){c.innerHTML=tabBtlConfig(p,a);bindBtlConfig(p);}
+  else{curSub='projeto';c.innerHTML=tabProjeto(p);}
   bindInputs(p);
   renderLists(p,a);
 }
