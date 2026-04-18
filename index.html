@@ -1006,6 +1006,53 @@ function renderPortfolio(){
 // ─────────────────────────────────────────────────────────────
 //  DASHBOARD
 // ─────────────────────────────────────────────────────────────
+// HTML Chart Helpers — sem dependencia Chart.js, renderizam inline no template
+function htmlCostDonut(a){
+  if(!a)return '';
+  const items=[
+    {l:'Aquisicao',v:a.acqAll||0,c:'#f59e0b'},
+    {l:'Obras',v:a.wrkTotal||0,c:'#3b82f6'},
+    {l:'Venda/Comissoes',v:(a.ami||0)+(a.saleOth||0),c:'#ef4444'},
+    {l:'Imposto',v:a.taxTotal||0,c:'#8b5cf6'}
+  ].filter(function(i){return i.v>0;});
+  const tot=items.reduce(function(s,i){return s+i.v;},0)||1;
+  return items.map(function(item){
+    const pct=Math.round((item.v/tot)*100);
+    return '<div style="margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+      +'<div style="display:flex;align-items:center;gap:7px">'
+      +'<div style="width:10px;height:10px;border-radius:50%;background:'+item.c+';flex-shrink:0"></div>'
+      +'<span style="font-size:12px;color:#94a3b8">'+item.l+'</span>'
+      +'</div>'
+      +'<span style="font-size:12px;font-weight:700;color:#f1f5f9">'+eur(item.v)
+      +' <span style="font-size:10px;color:#64748b;font-weight:400">('+pct+'%)</span></span>'
+      +'</div>'
+      +'<div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden">'
+      +'<div style="height:100%;width:'+pct+'%;background:'+item.c+';border-radius:999px"></div>'
+      +'</div></div>';
+  }).join('');
+}
+function htmlBars(items,colorFn){
+  if(!items||!items.length)return '<div style="font-size:12px;color:#64748b;padding:8px 0">Sem dados</div>';
+  const mx=Math.max.apply(null,items.map(function(x){return x.t||x.v||0;}))||1;
+  return items.slice(0,10).map(function(item,i){
+    const val=item.t||item.v||0;
+    const lbl=item.n||item.l||'';
+    const pct=Math.min(100,Math.round((val/mx)*100));
+    const col=colorFn(i);
+    return '<div style="margin-bottom:11px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+      +'<span style="font-size:11px;color:#94a3b8;max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+lbl+'">'+lbl+'</span>'
+      +'<span style="font-size:11px;font-weight:700;color:'+col+';flex-shrink:0">'+eur(val)+'</span>'
+      +'</div>'
+      +'<div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden">'
+      +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:999px;opacity:0.85"></div>'
+      +'</div></div>';
+  }).join('');
+}
+const _SC=['#3b82f6','#8b5cf6','#10b981','#f97316','#06b6d4','#ec4899','#f59e0b','#ef4444','#a3e635','#e879f9'];
+
+
 function renderDash(p,a){
   const c=q('dashContent');
   if(!p){c.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Seleciona um projeto</div><div class="empty-text">Vai ao Portefólio e escolhe um projeto.</div></div>`;return;}
@@ -1049,10 +1096,10 @@ function renderDash(p,a){
     </div>
     <div class="card">
       <div class="card-title">Estrutura de Custos</div>
-      <div class="chart-wrap"><canvas id="cCosts"></canvas></div>
+      <div style="padding:4px 0">${htmlCostDonut(a)}</div>
     </div>
-    ${a&&a.specs.length?`<div class="card"><div class="card-title">Obra por Especialidade</div><div class="chart-wrap tall"><canvas id="cSpecs"></canvas></div></div>`:''}
-    ${a&&a.suppliers&&a.suppliers.length?`<div class="card"><div class="card-title">Custos por Fornecedor</div><div class="chart-wrap tall"><canvas id="cSuppliers"></canvas></div></div>`:''}
+    ${a&&a.specs&&a.specs.length?`<div class="card"><div class="card-title">Obra por Especialidade</div><div style="padding:4px 0">${htmlBars(a.specs,function(i){return '#f59e0b';})}</div></div>`:''}
+    ${a&&a.suppliers&&a.suppliers.length?`<div class="card"><div class="card-title">Custos por Fornecedor</div><div style="padding:4px 0">${htmlBars(a.suppliers,function(i){return _SC[i%_SC.length];})}</div></div>`:''}
     ${a&&a.mkt?`<div class="card">
       <div class="card-title">Preço de Mercado Sugerido</div>
       <div class="metric"><span class="mk">Preço base de mercado</span><span class="mv">${eur(a.mkt.base)}</span></div>
