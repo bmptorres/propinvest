@@ -1174,16 +1174,14 @@ function renderDash(p,a){
 function dc(id){if(CHS[id]){CHS[id].destroy();delete CHS[id];}}
 function renderDashCharts(a){
   if(!a)return;
-  // Destroy and recreate each chart safely
+  // Chart.js 4.x: passa o canvas element directamente (NAO o contexto 2d)
   function safeChart(id,config){
     try{
-      if(CHS[id]){CHS[id].destroy();delete CHS[id];}
-      const el=q(id);
-      if(!el)return;
-      const ctx=el.getContext('2d');
-      if(!ctx)return;
-      CHS[id]=new Chart(ctx,config);
-    }catch(e){console.warn('Chart error',id,e);}
+      if(CHS[id]){try{CHS[id].destroy();}catch(e){}delete CHS[id];}
+      const el=document.getElementById(id);
+      if(!el||el.tagName!=='CANVAS')return;
+      CHS[id]=new Chart(el,config);
+    }catch(e){console.warn('Chart error ['+id+']:',e.message);}
   }
 
   // 1. Estrutura de Custos (doughnut)
