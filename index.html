@@ -3049,124 +3049,77 @@ function closeAIModal(){document.getElementById('aiMod')?.remove();}
 
 async function runAI(p,a,ck,k){
   try{
-    const city   = p.city||'Lisboa';
-    const parish = p.parish||'';
-    const loc    = parish?`${parish}, ${city}`:city;
-    const typo   = p.typology||'apartamento';
-    const area   = Number(p.areaM2||0);
+    const loc  = (p.parish?p.parish+', ':'')+( p.city||'Lisboa');
+    const typo = p.typology||'apartamento';
+    const area = Number(p.areaM2||0);
+    const saleExp  = Number(p.expectedSalePrice||0);
+    const totalCost= a?(a.acqAll+a.wrkTotal+(a.holdingTotal||0)):Number(p.purchasePrice||0);
+    const netProfit= a?(a.netProfit||0):0;
+    const roi      = a?Math.round(a.roiNet||0):0;
 
-    const saleExp   = Number(p.expectedSalePrice||0);
-    const salePerM2 = area>0&&saleExp>0 ? Math.round(saleExp/area) : 0;
-    const totalCost = a ? (a.acqAll+a.wrkTotal+(a.holdingTotal||0)) : Number(p.purchasePrice||0);
-    const netProfit = a ? (a.netProfit||0) : 0;
-    const roi       = a ? Math.round(a.roiNet||0) : 0;
+    // PASSO 1 — JSON só com números (web search, tokens mínimos)
+    const q1=`Idealista.pt: ${typo} ${area>0?area+'m2':''} ${loc}. Preco pedido:${saleExp}€.
+Devolve JSON (valores reais de mercado, sem zeros):
+{"med":0,"psm":0,"vmin":0,"vmax":0,"n":0,"c":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"pos":0,"ok":2,"cf":2}
+med=mediana€ psm=€/m2 vmin/vmax=intervalo n=nAnuncios c=comparaveis(p=preco,a=area) pos(-2a2)=posicionamentoPreco ok(1-4)=negocio cf(1-3)=confianca`;
 
-    // ── PASSO 1: Pesquisa real no Idealista ───────────────
-    // Prompt muito directo — sem template JSON para o modelo não copiar os zeros
-    const q1 =
-`Pesquisa agora no Idealista.pt: ${typo} à venda em ${loc}${area>0?', '+Math.round(area*0.7)+'-'+Math.round(area*1.3)+'m2':''}.
-
-Depois de pesquisar, responde com um JSON válido onde:
-- "med" = preço mediano real dos imóveis encontrados em euros (número inteiro)
-- "psmMed" = euro por m2 médio da zona (número inteiro)  
-- "psmMin" = euro por m2 mais barato encontrado (número inteiro)
-- "psmMax" = euro por m2 mais caro encontrado (número inteiro)
-- "vmin" = preço mínimo realista para vender este imóvel (número inteiro)
-- "vmax" = preço máximo realista para vender este imóvel (número inteiro)
-- "nImoveis" = quantos anúncios encontraste no Idealista (número inteiro)
-- "comps" = array com 3 anúncios reais que encontraste, cada um com "p" (preço em euros) e "a" (area em m2)
-- "pos" = como o preço pedido (${saleExp}€) se compara à mediana: -2 muito abaixo / -1 abaixo / 0 igual / 1 acima / 2 muito acima
-- "ok" = qualidade do negócio considerando ROI de ${roi}%: 1 excelente / 2 bom / 3 razoavel / 4 fraco
-- "conf" = confiança da análise: 1 alta / 2 media / 3 baixa
-
-Exemplo de resposta (substitui com valores REAIS encontrados):
-{"med":185000,"psmMed":2100,"psmMin":1800,"psmMax":2500,"vmin":170000,"vmax":210000,"nImoveis":47,"comps":[{"p":182000,"a":87},{"p":195000,"a":90},{"p":178000,"a":82}],"pos":0,"ok":2,"conf":1}
-
-Responde APENAS com o JSON. Sem texto.`;
-
-    const d1 = await aiCall(k,'claude-haiku-4-5-20251001',400,
-      'Es um especialista imobiliario. Pesquisa Idealista.pt e responde apenas com JSON real.',
+    const d1=await aiCall(k,'claude-haiku-4-5-20251001',180,
+      'Pesquisa Idealista.pt. JSON only.',
       [{role:'user',content:q1}],true);
 
-    const t1 = (d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    if(!t1) throw new Error('Sem resposta. Verifica créditos em console.anthropic.com');
+    const t1=(d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    if(!t1)throw new Error('Sem resposta. Verifica créditos Anthropic.');
 
-    // Extractor JSON robusto — encontra o bloco { } mais externo
-    let r = {med:0,psmMed:0,psmMin:0,psmMax:0,vmin:0,vmax:0,nImoveis:0,comps:[],pos:0,ok:2,conf:2};
+    let r={med:0,psm:0,vmin:0,vmax:0,n:0,c:[],pos:0,ok:2,cf:2};
     try{
       let s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
-      let depth=0,si=-1,ei=-1;
+      let d=0,si=-1,ei=-1;
       for(let i=0;i<s.length;i++){
-        if(s[i]==='{'){if(si<0)si=i;depth++;}
-        else if(s[i]==='}'){depth--;if(depth===0&&si>=0){ei=i;break;}}
+        if(s[i]==='{'){if(si<0)si=i;d++;}
+        else if(s[i]==='}'){d--;if(d===0&&si>=0){ei=i;break;}}
       }
-      if(si>=0&&ei>si){
-        const parsed=JSON.parse(s.slice(si,ei+1));
-        // Valida que temos valores reais (não zeros)
-        if(parsed.med>0) r=parsed;
-        else throw new Error('Modelo devolveu zeros');
-      }
+      if(si>=0&&ei>si){const p2=JSON.parse(s.slice(si,ei+1));if(p2.med>0)r=p2;}
     }catch(e){
-      // Fallback: extrai números individuais por regex
-      const n=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
-      r.med=n('med',0);r.psmMed=n('psmMed',0);r.psmMin=n('psmMin',0);r.psmMax=n('psmMax',0);
-      r.vmin=n('vmin',0);r.vmax=n('vmax',0);r.nImoveis=n('nImoveis',0);
-      r.pos=n('pos',0);r.ok=n('ok',2);r.conf=n('conf',2);
-      // Tenta extrair comps manualmente
-      const compsMatch=t1.match(/"comps"\s*:\s*\[([^\]]+)\]/);
-      if(compsMatch){
-        const pairs=[...compsMatch[1].matchAll(/"p"\s*:\s*(\d+)[^}]*"a"\s*:\s*(\d+)/g)];
-        r.comps=pairs.map(m=>({p:Number(m[1]),a:Number(m[2])}));
-      }
+      const n=(k,f)=>{const m=t1.match(new RegExp('"'+k+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):f;};
+      r={med:n('med',0),psm:n('psm',0),vmin:n('vmin',0),vmax:n('vmax',0),
+         n:n('n',0),c:[],pos:n('pos',0),ok:n('ok',2),cf:n('cf',2)};
     }
+    r.ok=Math.min(4,Math.max(1,Math.round(Number(r.ok)||2)));
+    r.cf=Math.min(3,Math.max(1,Math.round(Number(r.cf)||2)));
+    r.pos=Math.min(2,Math.max(-2,Math.round(Number(r.pos)||0)));
 
-    r.ok   = Math.min(4,Math.max(1,Math.round(Number(r.ok)||2)));
-    r.conf = Math.min(3,Math.max(1,Math.round(Number(r.conf)||2)));
-    r.pos  = Math.min(2,Math.max(-2,Math.round(Number(r.pos)||0)));
+    // PASSO 2 — Texto (sem web search, barato)
+    const diffPct=r.med>0&&saleExp>0?((saleExp-r.med)/r.med*100).toFixed(1):'0';
+    const posL={'-2':'muito abaixo','-1':'abaixo','0':'dentro','1':'acima','2':'muito acima'}[String(r.pos)]||'—';
 
-    // ── PASSO 2: Texto profissional ───────────────────────
-    const posLabel = {'-2':'muito abaixo','-1':'abaixo','0':'dentro','1':'acima','2':'muito acima'}[String(r.pos)]||'em linha';
-    const diffPct  = r.med>0&&saleExp>0 ? ((saleExp-r.med)/r.med*100).toFixed(1) : '0';
+    const q2=`${typo} ${area>0?area+'m2':''} ${loc}. Pedido:${saleExp}€. Mercado:${r.med}€(${r.psm}€/m2). Dif:${diffPct}%(${posL}). Invest:${totalCost}€ Lucro:${netProfit}€ ROI:${roi}%.
+Portugues profissional imobiliario sem markdown:
+POSICIONAMENTO: (1 frase)
+RISCOS: r1/r2
+OPORTUNIDADES: o1/o2
+RESUMO: (2 paragrafos para investidores)`;
 
-    const q2 =
-`Análise imobiliária em ${loc}:
-Imóvel: ${typo}${area>0?' '+area+'m²':''}
-Preço pedido: ${saleExp>0?saleExp+'€ ('+salePerM2+'€/m²)':'não definido'}
-Mediana mercado Idealista ${loc}: ${r.med>0?r.med+'€ ('+r.psmMed+'€/m²)':'—'}
-${r.nImoveis>0?r.nImoveis+' anúncios encontrados':''}
-Posicionamento: ${posLabel} do mercado (${diffPct}%)
-Capital investido: ${totalCost}€ | Lucro líquido: ${netProfit}€ | ROI: ${roi}%
-
-Responde em português profissional imobiliário, sem markdown:
-POSICIONAMENTO: (1 frase sobre o preço pedido vs mercado)
-RISCOS: risco1 / risco2
-OPORTUNIDADES: op1 / op2
-RESUMO: (2 parágrafos executivos para investidores com dados concretos)`;
-
-    const d2 = await aiCall(k,'claude-haiku-4-5-20251001',400,
-      'Especialista imobiliário Portugal. Linguagem financeira. Português.',
+    const d2=await aiCall(k,'claude-haiku-4-5-20251001',300,
+      'Especialista imoveis PT. Portugues.',
       [{role:'user',content:q2}],false);
 
-    const txt2 = (d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
-    const sec=(lbl)=>{
-      const m=txt2.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
-      return m?m[1].trim():'';
-    };
-    r.posText = sec('POSICIONAMENTO');
-    r.ris = sec('RISCOS').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.ops = sec('OPORTUNIDADES').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.res = sec('RESUMO')||(txt2.length>50?txt2:'Análise concluída.');
+    const txt2=(d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
+    const sec=lbl=>{const m=txt2.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));return m?m[1].trim():'';};
+    r.posText=sec('POSICIONAMENTO');
+    r.ris=sec('RISCOS').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.ops=sec('OPORTUNIDADES').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.res=sec('RESUMO')||(txt2.length>30?txt2:'Analise concluida.');
 
-    r.loc=loc; r.saleExpected=saleExp; r.salePerM2=salePerM2;
-    r.totalCost=totalCost; r.netProfit=netProfit; r.roi=roi;
-    r.diffPct=Number(diffPct);
-    r.analyzedAt=new Date().toLocaleString('pt-PT');
+    // Normaliza nomes de campos para o showAIResult
+    r.comps=r.c||[];r.psmMed=r.psm;r.nImoveis=r.n;r.conf=r.cf;
+    r.loc=loc;r.saleExpected=saleExp;r.salePerM2=area>0&&saleExp>0?Math.round(saleExp/area):0;
+    r.totalCost=totalCost;r.netProfit=netProfit;r.roi=roi;
+    r.diffPct=Number(diffPct);r.analyzedAt=new Date().toLocaleString('pt-PT');
 
-    // ── Persiste análise (localStorage + projecto) ────────
     window._aiLastResult=r;
     _aiCache[ck]=r;
-    try{ localStorage.setItem('ai_result_'+p.id, JSON.stringify(r)); }catch(e){}
-    const pr=AP(); if(pr){ pr.aiSummary=r.res; pr.aiResultKey=ck; setP(pr); }
+    try{localStorage.setItem('ai_result_'+p.id,JSON.stringify(r));}catch(e){}
+    const pr=AP();if(pr){pr.aiSummary=r.res;setP(pr);}
     showAIResult(r,p,a,ck);
 
   }catch(e){
@@ -3179,8 +3132,7 @@ RESUMO: (2 parágrafos executivos para investidores com dados concretos)`;
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="document.getElementById('aiMod').remove();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod').remove();openApiKeySetup()">🔑 API Key</button>
-      </div>
-    </div>`;
+      </div></div>`;
   }
 }
 
