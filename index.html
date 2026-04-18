@@ -463,7 +463,6 @@
         <button class="sub-tab" data-sub="obras">🔨 Obras</button>
         <button class="sub-tab" data-sub="venda">💵 Venda</button>
         <button class="sub-tab" data-sub="fiscal">📑 Fiscal</button>
-        <button class="sub-tab" data-sub="mercado">📈 Mercado</button>
         <button class="sub-tab" data-sub="financiamento">💰 Financ.</button>
         <button class="sub-tab" data-sub="oferta">🎯 Oferta</button>
         <button class="sub-tab" data-sub="cenarios">🔀 Cenários</button>
@@ -1173,6 +1172,7 @@ function renderDash(p,a){
 }
 function dc(id){if(CHS[id]){CHS[id].destroy();delete CHS[id];}}
 function renderDashCharts(a){
+  if(!a)return;
   dc('cCosts');
   const ctx=q('cCosts');
   if(ctx){
@@ -1211,7 +1211,6 @@ function renderDetail(){
   else if(curSub==='obras')c.innerHTML=tabObras(p);
   else if(curSub==='venda')c.innerHTML=tabVenda(p,a);
   else if(curSub==='fiscal')c.innerHTML=tabFiscal(p,a);
-  else if(curSub==='mercado')c.innerHTML=tabMercado(p,a);
   else if(curSub==='financiamento'){c.innerHTML=tabFinanciamento(p,a);bindFinanciamento(p);}
   else if(curSub==='oferta')c.innerHTML=tabOferta(p,a);
   else if(curSub==='cenarios'){c.innerHTML=tabCenarios(p,a);bindCenarios(p,a);}
@@ -2903,23 +2902,41 @@ async function runAI(p,a,ck,k){
     const totalCost = a ? (a.acqAll+a.wrkTotal+(a.holdingTotal||0)) : Number(p.purchasePrice||0);
     const netProfit = a ? (a.netProfit||0) : 0;
     const roi       = a ? Math.round(a.roiNet||0) : 0;
+    const areaLow   = area>0 ? Math.round(area*0.7) : 0;
+    const areaHigh  = area>0 ? Math.round(area*1.3) : 0;
 
-    // ── PASSO 1: JSON só com números ──────────────────────
-    const q1 = `Pesquisa no Idealista.pt imoveis ${typo} a venda em ${loc}${area>0?' com area entre '+Math.round(area*0.7)+'m2 e '+Math.round(area*1.3)+'m2':''}.
-Compara os precos encontrados com o preco de venda pretendido de ${saleExp>0?saleExp+'eur ('+salePerM2+'eur/m2)':'nao definido'}.
-JSON ONLY (numeros reais, sem texto):
-{"med":0,"psmMed":0,"psmMin":0,"psmMax":0,"vmin":0,"vmax":0,"comps":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"pos":0,"ok":2,"conf":2}
-med=mediana preco de mercado para este imovel; psmMed=euro/m2 medio zona; psmMin/psmMax=intervalo euro/m2; vmin/vmax=intervalo preco venda realista; comps=comparaveis(p=preco,a=area m2); pos=posicionamento preco pretendido vs mercado(-2=muito baixo,-1=abaixo,0=dentro,1=acima,2=muito acima); ok=avaliacao negocio(1=excelente,2=bom,3=razoavel,4=fraco ROI=${roi}%); conf=confianca(1=alta,2=media,3=baixa). JSON ONLY.`;
+    // ── PASSO 1: Pesquisa Idealista — só números ──────────
+    const q1 =
+`Vai ao Idealista.pt AGORA e pesquisa: "${typo} ${city}${area>0?' '+area+'m2':''}".
+Encontra 3-5 imoveis ${typo} à venda em ${loc}${area>0?', area '+areaLow+'-'+areaHigh+'m2':''}.
+${extras.length?'Procura imoveis com: '+extras.join(', ')+'.':''}
+Preço que o investidor quer receber pela venda: ${saleExp>0?saleExp+'€':'não definido'}
 
-    const d1 = await aiCall(k,'claude-haiku-4-5-20251001',220,
-      'Real estate expert Portugal. Search Idealista.pt. Return ONLY the JSON. No text.',
+Com base nos preços reais encontrados, preenche este JSON com valores reais (substitui os zeros):
+{"med":0,"psmMed":0,"psmMin":0,"psmMax":0,"vmin":0,"vmax":0,"nImoveis":0,"comps":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"pos":0,"ok":2,"conf":2}
+
+Definições OBRIGATÓRIAS:
+med = PREÇO MEDIANO de mercado para um ${typo}${area>0?' de '+area+'m2':''} em ${loc} (calculado a partir dos comparáveis encontrados, NÃO é o preço de compra do investidor)
+psmMed = euro por m2 médio da zona ${loc}
+psmMin/psmMax = intervalo mínimo/máximo de euro/m2
+vmin/vmax = intervalo de preço de venda realista para este imóvel
+nImoveis = número total de imóveis ${typo} disponíveis no Idealista em ${loc}
+comps = 3 comparáveis reais (p=preço em euros, a=área em m2)
+pos = posicionamento do preço pedido ${saleExp>0?'('+saleExp+'€)':''} face à mediana de mercado: -2=muito abaixo -1=abaixo 0=dentro do mercado +1=acima +2=muito acima
+ok = qualidade do negócio: 1=excelente(ROI>25%) 2=bom(ROI 15-25%) 3=razoável(ROI 8-15%) 4=fraco(ROI<8%) — ROI actual=${roi}%
+conf = confiança: 1=alta 2=média 3=baixa
+
+IMPORTANTE: med deve ser um preço de mercado REAL baseado nos comparáveis encontrados, não o preço de compra.
+JSON ONLY. Sem texto antes ou depois.`;
+
+    const d1 = await aiCall(k,'claude-haiku-4-5-20251001',250,
+      'Pesquisa Idealista.pt Portugal. Devolve APENAS o JSON com valores reais de mercado.',
       [{role:'user',content:q1}],true);
 
     const t1 = (d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    if(!t1) throw new Error('Sem resposta. Verifica creditos em console.anthropic.com');
+    if(!t1) throw new Error('Sem resposta. Verifica créditos em console.anthropic.com');
 
-    // Extractor JSON robusto
-    let r = {med:0,psmMed:0,psmMin:0,psmMax:0,vmin:0,vmax:0,comps:[],pos:0,ok:2,conf:2};
+    let r = {med:0,psmMed:0,psmMin:0,psmMax:0,vmin:0,vmax:0,nImoveis:0,comps:[],pos:0,ok:2,conf:2};
     try{
       let s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
       let depth=0,si=-1,ei=-1;
@@ -2930,35 +2947,36 @@ med=mediana preco de mercado para este imovel; psmMed=euro/m2 medio zona; psmMin
       if(si>=0&&ei>si) r=JSON.parse(s.slice(si,ei+1));
     }catch(e){
       const n=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
-      r={med:n('med',0),psmMed:n('psmMed',0),psmMin:n('psmMin',0),psmMax:n('psmMax',0),
-         vmin:n('vmin',0),vmax:n('vmax',0),comps:[],pos:n('pos',0),ok:n('ok',2),conf:n('conf',2)};
+      r.med=n('med',0);r.psmMed=n('psmMed',0);r.psmMin=n('psmMin',0);r.psmMax=n('psmMax',0);
+      r.vmin=n('vmin',0);r.vmax=n('vmax',0);r.nImoveis=n('nImoveis',0);
+      r.pos=n('pos',0);r.ok=n('ok',2);r.conf=n('conf',2);
     }
 
-    // Normaliza
     r.ok   = Math.min(4,Math.max(1,Math.round(Number(r.ok)||2)));
     r.conf = Math.min(3,Math.max(1,Math.round(Number(r.conf)||2)));
     r.pos  = Math.min(2,Math.max(-2,Math.round(Number(r.pos)||0)));
 
-    // ── PASSO 2: Texto profissional separado ──────────────
-    const posLabel = {'-2':'muito abaixo do mercado','-1':'abaixo do mercado',
-      '0':'dentro do mercado','1':'acima do mercado','2':'muito acima do mercado'}[String(r.pos)]||'a avaliar';
+    // ── PASSO 2: Texto profissional (sem JSON) ────────────
+    const posLabel = {'-2':'muito abaixo','-1':'abaixo','0':'dentro','1':'acima','2':'muito acima'}[String(r.pos)]||'em linha';
+    const diffPct  = r.med>0&&saleExp>0 ? ((saleExp-r.med)/r.med*100).toFixed(1) : '0';
 
-    const q2 = `Projecto imobiliario em ${loc}: ${typo}${area>0?' '+area+'m2':''}${extras.length?', '+extras.join(', '):''}
-Preco de venda pretendido: ${saleExp>0?saleExp+'eur ('+salePerM2+'eur/m2)':'nao definido'}
-Mediana de mercado Idealista.pt (${loc}): ${r.med>0?r.med+'eur ('+r.psmMed+'eur/m2)':'a apurar'}
-Intervalo de mercado: ${r.vmin>0?r.vmin+'eur a '+r.vmax+'eur':'a apurar'}
-Posicionamento do preco pedido: ${posLabel}
-Capital total investido: ${totalCost}eur | Lucro liquido estimado: ${netProfit}eur | ROI liquido: ${roi}%
-Avaliacao negocio: ${{1:'excelente',2:'bom',3:'razoavel',4:'fraco'}[r.ok]||'razoavel'}
+    const q2 =
+`Projecto imobiliário — análise para investidor:
+Imóvel: ${typo}${area>0?' '+area+'m²':''}${extras.length?', '+extras.join(', '):''}
+Localização: ${loc}
+Preço de venda pretendido: ${saleExp>0?saleExp+'€ ('+salePerM2+'€/m²)':'não definido'}
+Mediana de mercado Idealista.pt (${loc}): ${r.med>0?r.med+'€ ('+r.psmMed+'€/m²)':'apurado'}
+Diferença preço pedido vs mercado: ${diffPct}% (${posLabel} do mercado)
+Capital total investido: ${totalCost}€ | Lucro líquido estimado: ${netProfit}€ | ROI líquido: ${roi}%
 
-Responde em portugues, linguagem financeira imobiliaria profissional, sem markdown:
-POSICIONAMENTO: (1-2 frases tecnicas sobre o posicionamento do preco pedido face ao mercado, com dados concretos)
-RISCOS: (2 riscos especificos, uma linha cada)
-OPORTUNIDADES: (2 oportunidades concretas, uma linha cada)
-RESUMO: (2 paragrafos executivos profissionais para apresentar a investidores)`;
+Responde em português, linguagem financeira imobiliária, sem markdown, sem bullets:
+POSICIONAMENTO: (1 frase técnica sobre o posicionamento do preço face ao mercado)
+RISCOS: risco 1 / risco 2
+OPORTUNIDADES: oportunidade 1 / oportunidade 2
+RESUMO: (2 parágrafos executivos profissionais com dados concretos para apresentar a investidores)`;
 
-    const d2 = await aiCall(k,'claude-haiku-4-5-20251001',380,
-      'Especialista senior investimento imobiliario Portugal. Linguagem financeira. Portugues.',
+    const d2 = await aiCall(k,'claude-haiku-4-5-20251001',400,
+      'Especialista imobiliário Portugal. Português. Linguagem financeira profissional.',
       [{role:'user',content:q2}],false);
 
     const txt2 = (d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
@@ -2968,13 +2986,18 @@ RESUMO: (2 paragrafos executivos profissionais para apresentar a investidores)`;
       return m?m[1].trim():'';
     };
     r.posText = sec('POSICIONAMENTO');
-    r.ris     = sec('RISCOS').split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.ops     = sec('OPORTUNIDADES').split('\n').map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.res     = sec('RESUMO')||(txt2.length>50?txt2:'Analise concluida.');
+    const riscoRaw = sec('RISCOS');
+    const opsRaw   = sec('OPORTUNIDADES');
+    r.ris = riscoRaw.split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.ops = opsRaw.split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.res = sec('RESUMO')||(txt2.length>50?txt2:'Análise concluída.');
 
     r.loc=loc; r.saleExpected=saleExp; r.salePerM2=salePerM2;
     r.totalCost=totalCost; r.netProfit=netProfit; r.roi=roi;
+    r.diffPct=Number(diffPct);
 
+    // Guarda globalmente para PDF (evita JSON.stringify inline no onclick)
+    window._aiLastResult = r;
     _aiCache[ck]=r;
     const pr=AP(); if(pr){pr.aiSummary=r.res; setP(pr);}
     showAIResult(r,p,a,ck);
@@ -3001,169 +3024,152 @@ function showAIResult(r,p,a,ck){
   if(hdr)hdr.innerHTML=`<div class="ai-modal-title">🤖 Análise de Mercado Concluída</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button>`;
   const b=document.getElementById('aiBody');if(!b)return;
 
-  // Valores do resultado
   const med       = Number(r.med||0);
   const psmMed    = Number(r.psmMed||0);
   const psmMin    = Number(r.psmMin||0);
   const psmMax    = Number(r.psmMax||0);
   const vmin      = Number(r.vmin||0);
   const vmax      = Number(r.vmax||0);
-  const comps     = r.comps||[];
-  const pos       = Number(r.pos||0);  // -2 a +2
-  const ok        = r.ok||2;
-  const conf      = r.conf||2;
+  const nImoveis  = Number(r.nImoveis||0);
+  const comps     = (r.comps||[]).filter(c=>c.p>0);
+  const pos       = Number(r.pos||0);
+  const ok        = Number(r.ok||2);
+  const conf      = Number(r.conf||2);
   const posText   = r.posText||'';
-  const risks     = r.ris||[];
-  const ops       = r.ops||[];
+  const risks     = (r.ris||[]).filter(Boolean);
+  const ops       = (r.ops||[]).filter(Boolean);
   const summary   = r.res||'';
   const saleExp   = Number(r.saleExpected||p.expectedSalePrice||0);
   const salePerM2 = Number(r.salePerM2||0);
-  const totalCost = Number(r.totalCost||0);
+  const diffPct   = Number(r.diffPct||(med>0&&saleExp>0?((saleExp-med)/med*100):0));
+  const loc       = r.loc||p.city||'';
 
-  // Posicionamento de preço
   const posConfig = {
-    '-2': {label:'Muito abaixo do mercado 🔽',color:'var(--blue)',   bg:'rgba(59,130,246,.1)',  border:'rgba(59,130,246,.3)',  icon:'📉'},
-    '-1': {label:'Abaixo do mercado ↙',       color:'var(--blue)',   bg:'rgba(59,130,246,.08)', border:'rgba(59,130,246,.2)',  icon:'⬇️'},
-     '0': {label:'Dentro do mercado ✓',        color:'var(--good)',   bg:'rgba(16,185,129,.1)',  border:'rgba(16,185,129,.3)',  icon:'✅'},
-     '1': {label:'Acima do mercado ↗',         color:'var(--accent)', bg:'rgba(245,158,11,.1)',  border:'rgba(245,158,11,.3)', icon:'⚠️'},
-     '2': {label:'Muito acima do mercado 🔺',  color:'var(--bad)',    bg:'rgba(239,68,68,.1)',   border:'rgba(239,68,68,.3)',   icon:'🚨'},
+    '-2':{label:'Muito abaixo do mercado',color:'var(--blue)',  bg:'rgba(59,130,246,.12)', border:'rgba(59,130,246,.3)', emoji:'📉'},
+    '-1':{label:'Abaixo do mercado',      color:'var(--blue)',  bg:'rgba(59,130,246,.08)', border:'rgba(59,130,246,.2)', emoji:'⬇️'},
+     '0':{label:'Dentro do mercado',      color:'var(--good)',  bg:'rgba(16,185,129,.12)', border:'rgba(16,185,129,.3)', emoji:'✅'},
+     '1':{label:'Acima do mercado',       color:'var(--accent)',bg:'rgba(245,158,11,.12)', border:'rgba(245,158,11,.3)', emoji:'⬆️'},
+     '2':{label:'Muito acima do mercado', color:'var(--bad)',   bg:'rgba(239,68,68,.12)',  border:'rgba(239,68,68,.3)',  emoji:'🚨'},
   };
-  const pc=posConfig[String(pos)]||posConfig['0'];
+  const pc = posConfig[String(pos)]||posConfig['0'];
 
-  // Avaliação do negócio
-  const okConfig={
-    1:{label:'Excelente negócio 🏆',cls:'buy'},
-    2:{label:'Bom negócio ✅',      cls:'buy'},
-    3:{label:'Negócio razoável ⚠️', cls:'caution'},
-    4:{label:'Negócio fraco 🚨',    cls:'sell'},
+  const okConfig = {
+    1:{label:'Excelente negócio',cls:'buy',  color:'var(--good)'},
+    2:{label:'Bom negócio',      cls:'buy',  color:'var(--good)'},
+    3:{label:'Negócio razoável', cls:'caution',color:'var(--accent)'},
+    4:{label:'Negócio fraco',    cls:'sell', color:'var(--bad)'},
   };
-  const oc=okConfig[ok]||okConfig[2];
-
-  // Diferença percentual preço pedido vs mediana mercado
-  const diffPct=med>0&&saleExp>0?((saleExp-med)/med*100):0;
-  const diffStr=diffPct!==0?(diffPct>0?'+':'')+diffPct.toFixed(1)+'% vs mediana mercado':'';
+  const oc = okConfig[ok]||okConfig[2];
+  const confLabel = ['','Alta ●●●','Média ●●○','Baixa ●○○'][conf]||'—';
 
   if(summary){const pr=AP();if(pr){pr.aiSummary=summary;setP(pr);}}
 
+  // Compute bar chart % position for the slider
+  let sliderPct = 50; // default centre
+  if(vmin>0&&vmax>0&&vmax>vmin&&saleExp>0){
+    sliderPct = Math.min(96,Math.max(4,((saleExp-vmin)/(vmax-vmin)*100)));
+  }
+  const diffStr = diffPct!==0?(diffPct>0?'+':'')+diffPct.toFixed(1)+'% vs mediana':'dentro da mediana';
+  const diffColor = diffPct<-5?'var(--blue)':diffPct>5?'var(--bad)':'var(--good)';
+
   b.innerHTML=`
-    <!-- ── POSICIONAMENTO DO PREÇO (centro da análise) ── -->
+    <!-- ── POSICIONAMENTO CENTRAL ── -->
     <div class="ai-section">
-      <div class="ai-section-title">🎯 Posicionamento do Preço de Venda — Idealista.pt ${esc(r.loc||p.city||'')}</div>
+      <div class="ai-section-title">🎯 Posicionamento do Preço — Idealista.pt ${esc(loc)}</div>
 
-      <!-- Preço pedido vs mercado -->
-      <div style="background:${pc.bg};border:1px solid ${pc.border};border-radius:var(--radius-sm);padding:16px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${pc.color};margin-bottom:4px">Preço pedido pelo investidor</div>
-            <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--text)">${eur(saleExp)}</div>
-            ${salePerM2?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${eur(salePerM2)}/m²</div>`:''}
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Mediana de mercado</div>
-            <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--text)">${eur(med)}</div>
-            ${psmMed?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${eur(psmMed)}/m²</div>`:''}
-          </div>
+      <!-- Comparação lado a lado -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px">Preço pedido</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${saleExp>0?eur(saleExp):'—'}</div>
+          ${salePerM2?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(salePerM2)}/m²</div>`:''}
         </div>
-
-        <!-- Veredicto de posicionamento -->
-        <div style="background:${pc.color};padding:8px 12px;border-radius:8px;text-align:center">
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff">${pc.icon} ${pc.label}</div>
-          ${diffStr?`<div style="font-size:11px;color:rgba(255,255,255,.85);margin-top:2px">${diffStr}</div>`:''}
+        <div style="background:${pc.bg};border-radius:var(--radius-sm);padding:14px;border:1px solid ${pc.border}">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${pc.color};margin-bottom:5px">Mediana de mercado</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${med>0?eur(med):'—'}</div>
+          ${psmMed?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(psmMed)}/m²</div>`:''}
         </div>
-
-        ${posText?`<div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.6;font-style:italic">"${esc(posText)}"</div>`:''}
       </div>
 
-      <!-- Range de mercado -->
-      ${vmin&&vmax?`<div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Intervalo de preços em ${esc(r.loc||p.city||'')}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div style="text-align:center">
-            <div style="font-size:9px;color:var(--muted)">Mínimo</div>
-            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${eur(vmin)}</div>
-          </div>
-          <div style="flex:1;height:4px;background:linear-gradient(90deg,var(--blue),var(--good),var(--accent));border-radius:999px;position:relative">
-            ${saleExp&&vmin&&vmax?`<div style="position:absolute;top:-6px;left:${Math.min(95,Math.max(5,((saleExp-vmin)/(vmax-vmin)*100).toFixed(0)))}%;transform:translateX(-50%)">
-              <div style="width:4px;height:16px;background:var(--text);border-radius:2px"></div>
-              <div style="font-size:8px;color:var(--text);white-space:nowrap;margin-top:1px">pedido</div>
-            </div>`:''}
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:9px;color:var(--muted)">Máximo</div>
-            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${eur(vmax)}</div>
-          </div>
+      <!-- Veredicto posicionamento -->
+      <div style="background:${pc.color};border-radius:var(--radius-sm);padding:10px 14px;text-align:center;margin-bottom:10px">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff">${pc.emoji} ${pc.label}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.85);margin-top:2px">${diffStr}</div>
+      </div>
+
+      <!-- Barra visual de posicionamento no mercado -->
+      ${vmin>0&&vmax>0?`<div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:6px">
+          <span>Mínimo ${eur(vmin)}</span>
+          ${nImoveis>0?`<span>${nImoveis} imóveis no Idealista</span>`:''}
+          <span>Máximo ${eur(vmax)}</span>
         </div>
-        ${psmMin&&psmMax?`<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px">${eur(psmMin)}/m² – ${eur(psmMax)}/m²</div>`:''}
+        <div style="position:relative;height:10px;background:linear-gradient(90deg,var(--blue),var(--good),var(--accent),var(--bad));border-radius:999px;margin-bottom:8px">
+          <!-- Mediana marker -->
+          ${med>0&&vmin>0?`<div style="position:absolute;top:-3px;left:${Math.min(96,Math.max(4,((med-vmin)/(vmax-vmin)*100))).toFixed(0)}%;transform:translateX(-50%);width:3px;height:16px;background:rgba(255,255,255,.6);border-radius:2px" title="Mediana"></div>`:''}
+          <!-- Preço pedido marker -->
+          ${saleExp>0?`<div style="position:absolute;top:-6px;left:${sliderPct.toFixed(0)}%;transform:translateX(-50%)">
+            <div style="width:4px;height:22px;background:#fff;border-radius:2px;box-shadow:0 0 6px rgba(0,0,0,.4)"></div>
+            <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:8px;font-weight:700;color:var(--text)">Pedido</div>
+          </div>`:''}
+        </div>
+        ${psmMin&&psmMax?`<div style="font-size:10px;color:var(--muted);text-align:center">${eur(psmMin)}/m² – ${eur(psmMax)}/m²</div>`:''}
       </div>`:''}
+
+      ${posText?`<div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.6;padding:10px 12px;background:var(--surface);border-radius:var(--radius-sm);border-left:3px solid ${pc.color}">${esc(posText)}</div>`:''}
     </div>
 
-    <!-- ── AVALIAÇÃO DO NEGÓCIO ── -->
-    <div class="ai-section">
-      <div class="ai-section-title">💼 Avaliação do Negócio de Investimento</div>
-      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:14px;display:flex;gap:12px;align-items:center">
-        <div class="ai-verdict ${oc.cls}" style="flex-shrink:0">${oc.label}</div>
-        <div style="font-size:11px;color:var(--text2)">
-          ROI líquido: <strong style="color:var(--text)">${r.roi||0}%</strong>
-          ${totalCost?` · Capital: <strong style="color:var(--text)">${eur(totalCost)}</strong>`:''}
-          ${r.netProfit!==undefined?` · Lucro: <strong style="color:${r.netProfit>=0?'var(--good)':'var(--bad)'}">${eur(r.netProfit)}</strong>`:''}
-          <span style="display:block;margin-top:3px">Confiança da análise: ${['','Alta ●●●','Média ●●○','Baixa ●○○'][conf]||conf}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── COMPARÁVEIS IDEALISTA ── -->
-    ${comps.filter(c=>c.p>0).length?`<div class="ai-section">
-      <div class="ai-section-title">🏘️ Comparáveis em ${esc(r.loc||p.city||'')} — Idealista.pt (${comps.filter(c=>c.p>0).length} encontrados)</div>
-      ${comps.filter(c=>c.p>0).slice(0,5).map((c,i)=>{
+    <!-- ── COMPARÁVEIS ── -->
+    ${comps.length?`<div class="ai-section">
+      <div class="ai-section-title">🏘️ Comparáveis — ${esc(loc)} · Idealista.pt</div>
+      ${comps.slice(0,5).map((c,i)=>{
         const cPsm=c.pm||(c.p&&c.a?Math.round(c.p/c.a):0);
-        const diff2=saleExp&&c.p?((c.p-saleExp)/saleExp*100):0;
+        const d2=saleExp>0&&c.p>0?((c.p-saleExp)/saleExp*100):0;
         return `<div class="ai-comp-card">
           <div class="ai-comp-info">
             <div class="ai-comp-title">Comparável ${i+1}</div>
-            <div class="ai-comp-meta">${c.a||'—'}m² · Idealista.pt · ${esc(r.loc||p.city||'')}</div>
+            <div class="ai-comp-meta">${c.a||'—'}m² · ${esc(loc)} · Idealista.pt</div>
           </div>
           <div class="ai-comp-price">
             <div class="ai-comp-val">${eur(c.p)}</div>
             <div class="ai-comp-psm">${eur(cPsm)}/m²</div>
-            ${saleExp?`<div style="font-size:9px;color:${diff2>0?'var(--bad)':'var(--good)'};margin-top:1px">${diff2>0?'+':''}${diff2.toFixed(0)}% vs pedido</div>`:''}
+            ${saleExp>0?`<div style="font-size:9px;margin-top:2px;color:${d2>0?'var(--bad)':'var(--good)'}">${d2>0?'+':''}${d2.toFixed(0)}% vs pedido</div>`:''}
           </div>
         </div>`;}).join('')}
-      <div style="font-size:10px;color:var(--muted);margin-top:8px;padding:8px;background:var(--surface);border-radius:6px">
-        📊 Fonte: Idealista.pt · Zona: ${esc(r.loc||p.city||'')} · ${p.typology||'Imóvel'}${p.areaM2?' ~'+p.areaM2+'m²':''}
-      </div>
     </div>`:''}
 
+    <!-- ── AVALIAÇÃO DO NEGÓCIO ── -->
+    <div class="ai-section">
+      <div class="ai-section-title">💼 Avaliação do Negócio</div>
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div class="ai-verdict ${oc.cls}">${oc.label}</div>
+        <div style="font-size:11px;color:var(--text2);text-align:right">
+          ROI líq. <strong style="color:${oc.color}">${r.roi||0}%</strong>
+          · Confiança: ${confLabel}
+          ${r.totalCost?`<div style="font-size:10px">Capital: ${eur(r.totalCost)} · Lucro: <span style="color:${(r.netProfit||0)>=0?'var(--good)':'var(--bad)'}">${eur(r.netProfit||0)}</span></div>`:''}
+        </div>
+      </div>
+    </div>
+
     <!-- ── RISCOS E OPORTUNIDADES ── -->
-    ${risks.filter(Boolean).length||ops.filter(Boolean).length?`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${risks.filter(Boolean).length?`<div class="ai-section" style="margin-bottom:0">
-        <div class="ai-section-title" style="margin-bottom:8px">⚠️ Riscos</div>
-        ${risks.filter(Boolean).map(r=>`<div class="ai-alert-item warning"><span>⚠️</span><span>${esc(r)}</span></div>`).join('')}
-      </div>`:''}
-      ${ops.filter(Boolean).length?`<div class="ai-section" style="margin-bottom:0">
-        <div class="ai-section-title" style="margin-bottom:8px">💡 Oportunidades</div>
-        ${ops.filter(Boolean).map(o=>`<div class="ai-alert-item ok"><span>✅</span><span>${esc(o)}</span></div>`).join('')}
-      </div>`:''}
+    ${risks.length||ops.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      ${risks.length?`<div><div class="ai-section-title" style="margin-bottom:6px">⚠️ Riscos</div>${risks.map(r=>`<div class="ai-alert-item warning" style="margin-bottom:4px"><span>⚠</span><span style="font-size:11px">${esc(r)}</span></div>`).join('')}</div>`:''}
+      ${ops.length?`<div><div class="ai-section-title" style="margin-bottom:6px">💡 Oportunidades</div>${ops.map(o=>`<div class="ai-alert-item ok" style="margin-bottom:4px"><span>✓</span><span style="font-size:11px">${esc(o)}</span></div>`).join('')}</div>`:''}
     </div>`:''}
 
     <!-- ── RESUMO EXECUTIVO ── -->
     <div class="ai-section">
-      <div class="ai-section-title">📄 Resumo Executivo para Investidores</div>
-      <div class="ai-exec">${esc(summary)}</div>
+      <div class="ai-section-title">📄 Resumo Executivo</div>
+      <div class="ai-exec" style="max-height:none;overflow:visible">${esc(summary)}</div>
     </div>
 
-    <!-- ── ACÇÕES ── -->
-    <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0 20px">
+    <!-- ── ACÇÃO PRINCIPAL ── -->
+    <div style="padding:4px 0 20px">
       <button class="btn btn-primary" style="justify-content:center;width:100%;padding:14px"
-        onclick="exportAIPDF(AP(),analyze(AP()),${JSON.stringify({
-          med,psmMed,psmMin,psmMax,vmin,vmax,comps,pos,ok,conf,
-          posText,ris:risks,ops,res:summary,
-          saleExpected:saleExp,salePerM2,totalCost,
-          netProfit:r.netProfit,roi:r.roi,loc:r.loc
-        }).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')})">
+        onclick="exportAIPDF(AP(),analyze(AP()),window._aiLastResult)">
         📑 Exportar Relatório PDF para Investidores
       </button>
-      <button class="btn btn-ghost btn-sm" style="justify-content:center;width:100%"
+      <button class="btn btn-ghost btn-sm" style="justify-content:center;width:100%;margin-top:8px"
         onclick="delete _aiCache['${ck}'];document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">
         🔄 Nova análise
       </button>
@@ -3368,14 +3374,14 @@ async function exportAIPDF(p,a,ai){
     y=doc.lastAutoTable.finalY+10;
 
     // ── AVALIACAO DE MERCADO IA ───────────────────────────────
-    if(ai&&(ai.med||ai.val||ai.marketValuation)){
+    if(ai&&(Number(ai.med)||Number(ai.val)||ai.marketValuation)){
       const aiMed=ai.med||ai.val||ai.marketValuation||0;
       const aiVmin=ai.vmin||ai.marketValuationMin||0;
       const aiVmax=ai.vmax||ai.marketValuationMax||0;
       const aiPsm=ai.psmMed||ai.psm||ai.marketPricePerM2||0;
       const aiComps=(ai.comps||ai.comparables||[]).filter(c=>c.p>0);
-      const aiRisks=ai.ris||ai.risks||[];
-      const aiOps=ai.ops||ai.opportunities||[];
+      const aiRisks=(ai.ris||ai.risks||[]).filter(Boolean);
+      const aiOps=(ai.ops||ai.opportunities||[]).filter(Boolean);
       const aiSummary=ai.res||ai.summary||ai.executiveSummary||'';
       const aiSaleExp=ai.saleExpected||0;
       const aiPos=Number(ai.pos||0);
