@@ -1063,7 +1063,7 @@ function renderDash(p,a){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
         <div class="label-xs" style="color:var(--accent)">Projeto Ativo</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-          <button class="btn btn-sm" style="background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(249,115,22,.15));border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="openAIModal(AP(),analyze(AP()))">🤖 Analisar IA</button>
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(249,115,22,.15));border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="openAIModal(AP(),analyze(AP()))">${(()=>{try{return localStorage.getItem('ai_result_'+(p?.id||''))?'🤖 Ver Análise IA':'🤖 Analisar IA';}catch(e){return '🤖 Analisar IA';}})()}</button>
           
         </div>
       </div>
@@ -3008,15 +3008,35 @@ function openAIModal(p,a){
   const k=getApiKey();
   if(!k){
     const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiNoKey';
-    ov.innerHTML=`<div class="ai-modal" style="max-height:50dvh"><div class="ai-modal-header"><div class="ai-modal-title">🤖 Análise IA</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiNoKey').remove()" style="font-size:18px;padding:4px 8px">✕</button></div><div class="ai-modal-body" style="text-align:center;padding:30px 20px"><div style="font-size:44px;margin-bottom:12px">🔑</div><div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">API Key necessária</div><div style="font-size:12px;color:var(--text2);margin-bottom:20px">Configura a chave da Anthropic para usar a análise automática com pesquisa de mercado real.</div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('aiNoKey').remove();openApiKeySetup()">🔑 Configurar agora</button><div style="margin-top:10px"><a href="https://console.anthropic.com" target="_blank" style="font-size:11px;color:var(--blue)">Criar conta em console.anthropic.com →</a></div></div></div>`;
+    ov.innerHTML=`<div class="ai-modal" style="max-height:55dvh"><div class="ai-modal-header"><div class="ai-modal-title">🤖 Análise IA</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiNoKey').remove()" style="font-size:18px;padding:4px 8px">✕</button></div><div class="ai-modal-body" style="text-align:center;padding:30px 20px"><div style="font-size:44px;margin-bottom:12px">🔑</div><div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:10px">API Key necessária</div><div style="font-size:12px;color:var(--text2);margin-bottom:20px">Configura a chave Anthropic para análise automática.</div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('aiNoKey').remove();openApiKeySetup()">🔑 Configurar agora</button></div></div>`;
     document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
     return;
   }
-  const ck=p.id+'|'+p.purchasePrice+'|'+p.expectedSalePrice+'|'+(a?.wrkTotal||0)+'|'+p.city;
-  if(_aiCache[ck])return showAIResult(_aiCache[ck],p,a,ck);
+
+  // Cache key baseado nos dados financeiros chave
+  const ck='ai_'+p.id+'|'+p.purchasePrice+'|'+p.expectedSalePrice+'|'+(a?.wrkTotal||0)+'|'+p.city;
+
+  // Tenta carregar da memória, depois localStorage
+  let cached = _aiCache[ck];
+  if(!cached){
+    try{
+      const stored=localStorage.getItem('ai_result_'+p.id);
+      if(stored){ cached=JSON.parse(stored); _aiCache[ck]=cached; }
+    }catch(e){}
+  }
+
+  if(cached){
+    // Mostra análise guardada com opção de refazer
+    showAIResult(cached,p,a,ck,true);
+    return;
+  }
+
+  // Sem cache — faz análise nova
   showAILoading();
   runAI(p,a,ck,k);
 }
+
+
 
 function showAILoading(){
   const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiMod';
@@ -3034,51 +3054,44 @@ async function runAI(p,a,ck,k){
     const loc    = parish?`${parish}, ${city}`:city;
     const typo   = p.typology||'apartamento';
     const area   = Number(p.areaM2||0);
-    const extras = [];
-    if(p.marketConfig?.hasPool)    extras.push('piscina');
-    if(p.marketConfig?.hasGarage)  extras.push('garagem');
-    if(p.marketConfig?.hasGarden)  extras.push('jardim');
-    if(p.marketConfig?.hasTerrace) extras.push('terraco');
 
     const saleExp   = Number(p.expectedSalePrice||0);
     const salePerM2 = area>0&&saleExp>0 ? Math.round(saleExp/area) : 0;
     const totalCost = a ? (a.acqAll+a.wrkTotal+(a.holdingTotal||0)) : Number(p.purchasePrice||0);
     const netProfit = a ? (a.netProfit||0) : 0;
     const roi       = a ? Math.round(a.roiNet||0) : 0;
-    const areaLow   = area>0 ? Math.round(area*0.7) : 0;
-    const areaHigh  = area>0 ? Math.round(area*1.3) : 0;
 
-    // ── PASSO 1: Pesquisa Idealista — só números ──────────
+    // ── PASSO 1: Pesquisa real no Idealista ───────────────
+    // Prompt muito directo — sem template JSON para o modelo não copiar os zeros
     const q1 =
-`Vai ao Idealista.pt AGORA e pesquisa: "${typo} ${city}${area>0?' '+area+'m2':''}".
-Encontra 3-5 imoveis ${typo} à venda em ${loc}${area>0?', area '+areaLow+'-'+areaHigh+'m2':''}.
-${extras.length?'Procura imoveis com: '+extras.join(', ')+'.':''}
-Preço que o investidor quer receber pela venda: ${saleExp>0?saleExp+'€':'não definido'}
+`Pesquisa agora no Idealista.pt: ${typo} à venda em ${loc}${area>0?', '+Math.round(area*0.7)+'-'+Math.round(area*1.3)+'m2':''}.
 
-Com base nos preços reais encontrados, preenche este JSON com valores reais (substitui os zeros):
-{"med":0,"psmMed":0,"psmMin":0,"psmMax":0,"vmin":0,"vmax":0,"nImoveis":0,"comps":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}],"pos":0,"ok":2,"conf":2}
+Depois de pesquisar, responde com um JSON válido onde:
+- "med" = preço mediano real dos imóveis encontrados em euros (número inteiro)
+- "psmMed" = euro por m2 médio da zona (número inteiro)  
+- "psmMin" = euro por m2 mais barato encontrado (número inteiro)
+- "psmMax" = euro por m2 mais caro encontrado (número inteiro)
+- "vmin" = preço mínimo realista para vender este imóvel (número inteiro)
+- "vmax" = preço máximo realista para vender este imóvel (número inteiro)
+- "nImoveis" = quantos anúncios encontraste no Idealista (número inteiro)
+- "comps" = array com 3 anúncios reais que encontraste, cada um com "p" (preço em euros) e "a" (area em m2)
+- "pos" = como o preço pedido (${saleExp}€) se compara à mediana: -2 muito abaixo / -1 abaixo / 0 igual / 1 acima / 2 muito acima
+- "ok" = qualidade do negócio considerando ROI de ${roi}%: 1 excelente / 2 bom / 3 razoavel / 4 fraco
+- "conf" = confiança da análise: 1 alta / 2 media / 3 baixa
 
-Definições OBRIGATÓRIAS:
-med = PREÇO MEDIANO de mercado para um ${typo}${area>0?' de '+area+'m2':''} em ${loc} (calculado a partir dos comparáveis encontrados, NÃO é o preço de compra do investidor)
-psmMed = euro por m2 médio da zona ${loc}
-psmMin/psmMax = intervalo mínimo/máximo de euro/m2
-vmin/vmax = intervalo de preço de venda realista para este imóvel
-nImoveis = número total de imóveis ${typo} disponíveis no Idealista em ${loc}
-comps = 3 comparáveis reais (p=preço em euros, a=área em m2)
-pos = posicionamento do preço pedido ${saleExp>0?'('+saleExp+'€)':''} face à mediana de mercado: -2=muito abaixo -1=abaixo 0=dentro do mercado +1=acima +2=muito acima
-ok = qualidade do negócio: 1=excelente(ROI>25%) 2=bom(ROI 15-25%) 3=razoável(ROI 8-15%) 4=fraco(ROI<8%) — ROI actual=${roi}%
-conf = confiança: 1=alta 2=média 3=baixa
+Exemplo de resposta (substitui com valores REAIS encontrados):
+{"med":185000,"psmMed":2100,"psmMin":1800,"psmMax":2500,"vmin":170000,"vmax":210000,"nImoveis":47,"comps":[{"p":182000,"a":87},{"p":195000,"a":90},{"p":178000,"a":82}],"pos":0,"ok":2,"conf":1}
 
-IMPORTANTE: med deve ser um preço de mercado REAL baseado nos comparáveis encontrados, não o preço de compra.
-JSON ONLY. Sem texto antes ou depois.`;
+Responde APENAS com o JSON. Sem texto.`;
 
-    const d1 = await aiCall(k,'claude-haiku-4-5-20251001',250,
-      'Pesquisa Idealista.pt Portugal. Devolve APENAS o JSON com valores reais de mercado.',
+    const d1 = await aiCall(k,'claude-haiku-4-5-20251001',400,
+      'Es um especialista imobiliario. Pesquisa Idealista.pt e responde apenas com JSON real.',
       [{role:'user',content:q1}],true);
 
     const t1 = (d1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
     if(!t1) throw new Error('Sem resposta. Verifica créditos em console.anthropic.com');
 
+    // Extractor JSON robusto — encontra o bloco { } mais externo
     let r = {med:0,psmMed:0,psmMin:0,psmMax:0,vmin:0,vmax:0,nImoveis:0,comps:[],pos:0,ok:2,conf:2};
     try{
       let s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
@@ -3087,62 +3100,73 @@ JSON ONLY. Sem texto antes ou depois.`;
         if(s[i]==='{'){if(si<0)si=i;depth++;}
         else if(s[i]==='}'){depth--;if(depth===0&&si>=0){ei=i;break;}}
       }
-      if(si>=0&&ei>si) r=JSON.parse(s.slice(si,ei+1));
+      if(si>=0&&ei>si){
+        const parsed=JSON.parse(s.slice(si,ei+1));
+        // Valida que temos valores reais (não zeros)
+        if(parsed.med>0) r=parsed;
+        else throw new Error('Modelo devolveu zeros');
+      }
     }catch(e){
+      // Fallback: extrai números individuais por regex
       const n=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
       r.med=n('med',0);r.psmMed=n('psmMed',0);r.psmMin=n('psmMin',0);r.psmMax=n('psmMax',0);
       r.vmin=n('vmin',0);r.vmax=n('vmax',0);r.nImoveis=n('nImoveis',0);
       r.pos=n('pos',0);r.ok=n('ok',2);r.conf=n('conf',2);
+      // Tenta extrair comps manualmente
+      const compsMatch=t1.match(/"comps"\s*:\s*\[([^\]]+)\]/);
+      if(compsMatch){
+        const pairs=[...compsMatch[1].matchAll(/"p"\s*:\s*(\d+)[^}]*"a"\s*:\s*(\d+)/g)];
+        r.comps=pairs.map(m=>({p:Number(m[1]),a:Number(m[2])}));
+      }
     }
 
     r.ok   = Math.min(4,Math.max(1,Math.round(Number(r.ok)||2)));
     r.conf = Math.min(3,Math.max(1,Math.round(Number(r.conf)||2)));
     r.pos  = Math.min(2,Math.max(-2,Math.round(Number(r.pos)||0)));
 
-    // ── PASSO 2: Texto profissional (sem JSON) ────────────
+    // ── PASSO 2: Texto profissional ───────────────────────
     const posLabel = {'-2':'muito abaixo','-1':'abaixo','0':'dentro','1':'acima','2':'muito acima'}[String(r.pos)]||'em linha';
     const diffPct  = r.med>0&&saleExp>0 ? ((saleExp-r.med)/r.med*100).toFixed(1) : '0';
 
     const q2 =
-`Projecto imobiliário — análise para investidor:
-Imóvel: ${typo}${area>0?' '+area+'m²':''}${extras.length?', '+extras.join(', '):''}
-Localização: ${loc}
-Preço de venda pretendido: ${saleExp>0?saleExp+'€ ('+salePerM2+'€/m²)':'não definido'}
-Mediana de mercado Idealista.pt (${loc}): ${r.med>0?r.med+'€ ('+r.psmMed+'€/m²)':'apurado'}
-Diferença preço pedido vs mercado: ${diffPct}% (${posLabel} do mercado)
-Capital total investido: ${totalCost}€ | Lucro líquido estimado: ${netProfit}€ | ROI líquido: ${roi}%
+`Análise imobiliária em ${loc}:
+Imóvel: ${typo}${area>0?' '+area+'m²':''}
+Preço pedido: ${saleExp>0?saleExp+'€ ('+salePerM2+'€/m²)':'não definido'}
+Mediana mercado Idealista ${loc}: ${r.med>0?r.med+'€ ('+r.psmMed+'€/m²)':'—'}
+${r.nImoveis>0?r.nImoveis+' anúncios encontrados':''}
+Posicionamento: ${posLabel} do mercado (${diffPct}%)
+Capital investido: ${totalCost}€ | Lucro líquido: ${netProfit}€ | ROI: ${roi}%
 
-Responde em português, linguagem financeira imobiliária, sem markdown, sem bullets:
-POSICIONAMENTO: (1 frase técnica sobre o posicionamento do preço face ao mercado)
-RISCOS: risco 1 / risco 2
-OPORTUNIDADES: oportunidade 1 / oportunidade 2
-RESUMO: (2 parágrafos executivos profissionais com dados concretos para apresentar a investidores)`;
+Responde em português profissional imobiliário, sem markdown:
+POSICIONAMENTO: (1 frase sobre o preço pedido vs mercado)
+RISCOS: risco1 / risco2
+OPORTUNIDADES: op1 / op2
+RESUMO: (2 parágrafos executivos para investidores com dados concretos)`;
 
     const d2 = await aiCall(k,'claude-haiku-4-5-20251001',400,
-      'Especialista imobiliário Portugal. Português. Linguagem financeira profissional.',
+      'Especialista imobiliário Portugal. Linguagem financeira. Português.',
       [{role:'user',content:q2}],false);
 
     const txt2 = (d2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
-
     const sec=(lbl)=>{
       const m=txt2.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
       return m?m[1].trim():'';
     };
     r.posText = sec('POSICIONAMENTO');
-    const riscoRaw = sec('RISCOS');
-    const opsRaw   = sec('OPORTUNIDADES');
-    r.ris = riscoRaw.split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
-    r.ops = opsRaw.split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.ris = sec('RISCOS').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
+    r.ops = sec('OPORTUNIDADES').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3);
     r.res = sec('RESUMO')||(txt2.length>50?txt2:'Análise concluída.');
 
     r.loc=loc; r.saleExpected=saleExp; r.salePerM2=salePerM2;
     r.totalCost=totalCost; r.netProfit=netProfit; r.roi=roi;
     r.diffPct=Number(diffPct);
+    r.analyzedAt=new Date().toLocaleString('pt-PT');
 
-    // Guarda globalmente para PDF (evita JSON.stringify inline no onclick)
-    window._aiLastResult = r;
+    // ── Persiste análise (localStorage + projecto) ────────
+    window._aiLastResult=r;
     _aiCache[ck]=r;
-    const pr=AP(); if(pr){pr.aiSummary=r.res; setP(pr);}
+    try{ localStorage.setItem('ai_result_'+p.id, JSON.stringify(r)); }catch(e){}
+    const pr=AP(); if(pr){ pr.aiSummary=r.res; pr.aiResultKey=ck; setP(pr); }
     showAIResult(r,p,a,ck);
 
   }catch(e){
@@ -3162,7 +3186,7 @@ RESUMO: (2 parágrafos executivos profissionais com dados concretos para apresen
 
 
 
-function showAIResult(r,p,a,ck){
+function showAIResult(r,p,a,ck,fromCache){
   const hdr=document.getElementById('aiMod')?.querySelector('.ai-modal-header');
   if(hdr)hdr.innerHTML=`<div class="ai-modal-title">🤖 Análise de Mercado Concluída</div><button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove()" style="font-size:18px;padding:4px 8px">✕</button>`;
   const b=document.getElementById('aiBody');if(!b)return;
@@ -3307,14 +3331,15 @@ function showAIResult(r,p,a,ck){
     </div>
 
     <!-- ── ACÇÃO PRINCIPAL ── -->
+    ${fromCache?`<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--blue);display:flex;align-items:center;gap:8px"><span>🕐</span><span>Análise de <strong>${r.analyzedAt||'sessão anterior'}</strong> — guardada automaticamente</span></div>`:''}
     <div style="padding:4px 0 20px">
       <button class="btn btn-primary" style="justify-content:center;width:100%;padding:14px"
         onclick="exportAIPDF(AP(),analyze(AP()),window._aiLastResult)">
         📑 Exportar Relatório PDF para Investidores
       </button>
       <button class="btn btn-ghost btn-sm" style="justify-content:center;width:100%;margin-top:8px"
-        onclick="delete _aiCache['${ck}'];document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">
-        🔄 Nova análise
+        onclick="try{localStorage.removeItem('ai_result_'+AP()?.id);}catch(e){};delete _aiCache['${ck}'];window._aiLastResult=null;document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">
+        🔄 Gerar nova análise
       </button>
     </div>`;
 }
