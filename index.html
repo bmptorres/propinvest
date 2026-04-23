@@ -8,6 +8,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>PropInvest Pro</title>
   <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
@@ -3318,10 +3321,78 @@ function showAIModal(r,p,a,ck,fromCache){
       ${r.ops?.length?`<div><div class="ai-section-title" style="margin-bottom:6px">💡 Oportunidades</div>${r.ops.map(x=>`<div class="ai-alert-item ok" style="margin-bottom:4px"><span>✓</span><span style="font-size:11px">${esc(x)}</span></div>`).join('')}</div>`:''}
     </div>`:''}
 
-    <!-- RESUMO EXECUTIVO -->
+    <!-- MÉTRICAS DE INVESTIMENTO IMOBILIÁRIO -->
     <div class="ai-section">
-      <div class="ai-section-title">📄 Resumo Executivo para Investidores</div>
-      <div class="ai-exec" style="max-height:none">${esc(r.res||'')}</div>
+      <div class="ai-section-title">📊 Métricas de Avaliação do Investimento</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+
+        <!-- Yield Bruto -->
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Yield Bruto</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--accent)">${a&&a.btl&&a.btl.grossYield?pct(a.btl.grossYield):'—'}</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px">Renda anual / Capital</div>
+        </div>
+
+        <!-- ROI Líquido -->
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">ROI Líquido</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:${(r.roi||0)>=15?'var(--good)':(r.roi||0)>=8?'var(--accent)':'var(--bad)'}">${r.roi||0}%</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px">Benchmark PT: 15-25%</div>
+        </div>
+
+        <!-- Equity Multiple -->
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Equity Multiple</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--blue)">${a&&a.capTotal>0?((a.netFinal||0)/a.capTotal).toFixed(2)+'x':'—'}</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px">Retorno / Capital investido</div>
+        </div>
+
+        <!-- Margem Líquida -->
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Margem Líquida</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:${a&&(a.netProfit||0)>0?'var(--good)':'var(--bad)'}">${a&&a.saleRef>0?((a.netProfit||0)/a.saleRef*100).toFixed(1)+'%':'—'}</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px">Lucro líq. / Preço de venda</div>
+        </div>
+
+        <!-- LTV (se financiamento) -->
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">LTV</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--text)">${a&&a.useFinancing&&a.loanAmt>0&&p.purchasePrice>0?(a.loanAmt/p.purchasePrice*100).toFixed(0)+'%':'Sem fin.'}</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px">Loan-to-Value</div>
+        </div>
+
+        <!-- Exposição de Capital -->
+        <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Capital Exposto</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--text)">${a?eur(a.equityInvested||a.capTotal):'—'}</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px">Equity investida</div>
+        </div>
+      </div>
+
+      <!-- Semáforo de risco -->
+      <div style="background:var(--surface);border-radius:var(--radius-sm);padding:12px;border:1px solid var(--border)">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Perfil de Risco-Retorno</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          ${(()=>{
+            const roi2=r.roi||0,d=r.diffPct||0;
+            const scores=[
+              {label:'ROI',score:roi2>=20?3:roi2>=12?2:roi2>=6?1:0},
+              {label:'Preco vs Mercado',score:Math.abs(d)<=5?3:Math.abs(d)<=15?2:Math.abs(d)<=25?1:0},
+              {label:'Liquidez',score:r.n>20?3:r.n>5?2:r.n>0?1:0},
+              {label:'Margem Seg.',score:a&&a.profit>0&&(a.profit/a.capTotal)>0.25?3:a&&a.profit>0&&(a.profit/a.capTotal)>0.10?2:1},
+            ];
+            return scores.map(function(it){
+              const c=it.score>=3?'var(--good)':it.score>=2?'var(--accent)':'var(--bad)';
+              const lbl=it.score>=3?'Alto':it.score>=2?'Medio':'Baixo';
+              return '<div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.04);padding:4px 8px;border-radius:6px">'
+                +'<div style="width:8px;height:8px;border-radius:50%;background:'+c+'"></div>'
+                +'<span style="font-size:10px;color:var(--text2)">'+it.label+'</span>'
+                +'<span style="font-size:10px;font-weight:700;color:'+c+'">'+lbl+'</span>'
+                +'</div>';
+            }).join('');
+          })()}
+        </div>
+      </div>
     </div>
 
     <!-- ACÇÕES -->
@@ -3357,204 +3428,372 @@ async function exportAIPDF(p,a,ai){
   try{
     const{jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
-    const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=16;
+    const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=14;
+    // Paleta
     const DK=[55,62,67],WH=[255,255,255],BK=[15,23,42];
     const AM=[245,158,11],BL=[59,130,246],GR=[16,185,129],RD=[239,68,68],PU=[139,92,246];
-    const GY=[148,163,184],LG=[248,250,252];
+    const GY=[148,163,184],LG=[248,250,252],LGBDR=[220,225,230];
     let y=0;
 
-    const newPage=()=>{addFooterPage(doc,W,H,M);doc.addPage();y=20;};
-    const chkY=(need)=>{if(y+need>H-22)newPage();};
+    const logo=typeof LOGO!=='undefined'?LOGO:null;
+    const chkY=(need)=>{if(y+need>H-22){addFooterPage(doc,W,H,M,doc.internal.getNumberOfPages(),null,logo);doc.addPage();addHeaderBrand(y=20);}};
+    
+    // Header de marca em cada página nova
+    function addHeaderBrand(yy){
+      doc.setFillColor(...DK);doc.rect(0,0,W,14,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...WH);
+      doc.text('PROPINVEST PRO · TESSA ADVISORS',W/2,9,{align:'center'});
+    }
 
-    // CAPA
-    doc.setFillColor(...DK);doc.rect(0,0,W,55,'F');
-    doc.setFillColor(...AM);doc.rect(0,52,W,3,'F');
-    if(typeof LOGO!=='undefined'&&LOGO){try{doc.addImage(LOGO,'PNG',W/2-16,7,32,32);}catch(e){}}
-    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
-    doc.text('RELATORIO DE INVESTIMENTO IMOBILIARIO',W/2,48,{align:'center'});
-    y=66;
-    const nameLines=doc.splitTextToSize(p.name||'Projecto',W-M*2);
+    // ── CAPA ─────────────────────────────────────────────────────
+    // Fundo branco para capa
+    doc.setFillColor(250,250,252);doc.rect(0,0,W,H,'F');
+    // Faixa amber fina no topo
+    doc.setFillColor(...AM);doc.rect(0,0,W,3,'F');
+    // Logo Tessa Advisors centrado - fundo claro
+    if(logo){
+      try{
+        const lH=16,lW=lH*(1080/124);
+        doc.addImage(logo,'PNG',(W-lW)/2,10,lW,lH);
+      }catch(e){}
+    }
+    // Linha divisora
+    doc.setDrawColor(...LGBDR);doc.setLineWidth(0.4);doc.line(M,32,W-M,32);
+    // Etiqueta
+    doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(...GY);
+    doc.text('RELATORIO CONFIDENCIAL DE INVESTIMENTO IMOBILIARIO',W/2,38,{align:'center'});
+    doc.setFontSize(7);
+    doc.text(new Date().toLocaleDateString('pt-PT',{day:'2-digit',month:'long',year:'numeric'}),W/2,43,{align:'center'});
+    // Bloco projecto com fundo neutro
+    doc.setFillColor(240,241,245);doc.rect(M,52,W-M*2,40,'F');
+    doc.setFillColor(...AM);doc.rect(M,52,3,40,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...GY);
+    doc.text('PROJECTO DE INVESTIMENTO',M+6,60);
+    const nameLines=doc.splitTextToSize(p.name||'Projecto',W-M*2-12);
     doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...BK);
-    doc.text(nameLines,M,y);y+=nameLines.length*7+4;
-    const meta=[p.city,p.parish,p.typology,p.areaM2?p.areaM2+'m2':'',p.strategy].filter(Boolean).join(' · ');
-    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(...GY);
-    doc.text(meta,M,y);y+=5;
-    doc.text('Gerado em '+new Date().toLocaleDateString('pt-PT')+' · PropInvest Pro · Tessa Advisors',M,y);y+=10;
-    doc.setDrawColor(...AM);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=8;
+    doc.text(nameLines,M+6,70);
 
-    // BANNER AI
+    y=102;
+    // Meta dados
+    const meta=[p.city&&p.parish?p.city+', '+p.parish:p.city||'',p.typology||'',p.areaM2?p.areaM2+'m2':'',p.strategy].filter(Boolean);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GY);
+    doc.text(meta.join('  .  '),M,y);y+=5;
+    doc.setFontSize(8);
+    doc.text('Preparado por Tessa Advisors . PropInvest Pro . '+new Date().toLocaleDateString('pt-PT'),M,y);y+=8;
+    doc.setDrawColor(...AM);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=10;
+
+    // ── BANNER AI (posicionamento mercado) ───────────────────────
     if(ai){
       const posCols={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD};
       const posLbls={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO','0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'};
+      const okLbls={1:'EXCELENTE NEGÓCIO',2:'BOM NEGÓCIO',3:'NEGÓCIO RAZOÁVEL',4:'NEGÓCIO FRACO'};
       const posC=posCols[String(ai.pos)]||AM;
-      doc.setFillColor(...posC);doc.rect(M,y,W-M*2,22,'F');
-      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...WH);
-      doc.text(posLbls[String(ai.pos)]||'ANALISE DE MERCADO',W/2,y+8,{align:'center'});
-      doc.setFontSize(8);doc.setFont('helvetica','normal');
-      doc.text('Preco pedido: '+eur(ai.saleExp||0)+'  |  Mediana mercado: '+eur(ai.med||0)+'  |  Diff: '+(ai.diffPct>0?'+':'')+Number(ai.diffPct||0).toFixed(1)+'%',W/2,y+16,{align:'center'});
-      y+=28;
+      const okC={1:GR,2:GR,3:AM,4:RD}[ai.ok]||AM;
+
+      // Bloco posicionamento
+      doc.setFillColor(...posC);doc.rect(M,y,W/2-M-3,20,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...WH);
+      doc.text('POSICIONAMENTO DO PREÇO',M+3,y+5);
+      doc.setFontSize(9);doc.text(posLbls[String(ai.pos)]||'—',M+3,y+12);
+      const dif=Number(ai.diffPct||0);
+      doc.setFontSize(7);doc.setFont('helvetica','normal');
+      doc.text((dif>0?'+':'')+dif.toFixed(1)+'% vs mediana mercado',M+3,y+17);
+
+      // Bloco avaliação
+      doc.setFillColor(...okC);doc.rect(W/2+3,y,W/2-M-3,20,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...WH);
+      doc.text('AVALIAÇÃO DO NEGÓCIO',W/2+6,y+5);
+      doc.setFontSize(9);doc.text(okLbls[ai.ok]||'—',W/2+6,y+12);
+      doc.setFontSize(7);doc.setFont('helvetica','normal');
+      doc.text('ROI líquido: '+String(ai.roi||0)+'% · Confiança: '+({1:'Alta',2:'Média',3:'Baixa'}[ai.cf]||'—'),W/2+6,y+17);
+      y+=26;
     }
 
-    // KPIs
+    // ── KPIs FINANCEIROS (4 boxes) ────────────────────────────────
     const roi=a.roiNet||0;
     const kpis=[
-      {l:'Aquisicao All-In',v:eur(a.acqAll),s:p.areaM2?eur(Math.round(a.acqAll/p.areaM2))+'/m2':'',c:AM},
-      {l:'Capital Investido',v:eur(a.capTotal),s:(a.invRes?.length||0)+' invest.',c:BL},
-      {l:'Lucro Liquido',v:eur(a.netProfit||0),s:'ROI '+pct(roi),c:(a.netProfit||0)>=0?GR:RD},
-      {l:'ROI Liquido',v:pct(roi),s:'Pos-imposto',c:roi>=20?GR:roi>=10?AM:RD},
+      {l:'Aquisição All-In',v:eur(a.acqAll),s:p.areaM2?eur(Math.round(a.acqAll/p.areaM2))+'/m²':'',c:AM},
+      {l:'Capital Investido',v:eur(a.capTotal),s:(a.invRes?.length||0)+' investidor(es)',c:BL},
+      {l:'Lucro Líquido',v:eur(a.netProfit||0),s:'ROI '+pct(roi),c:(a.netProfit||0)>=0?GR:RD},
+      {l:'ROI Líquido',v:pct(roi),s:'Pós-imposto IRS',c:roi>=20?GR:roi>=10?AM:RD},
     ];
-    const kW=(W-M*2-8)/2,kH=22;
+    const kW=(W-M*2-9)/2,kH=22;
     kpis.forEach((k,i)=>{
-      const kx=M+(i%2)*(kW+8),ky=y+Math.floor(i/2)*(kH+5);
+      const kx=M+(i%2)*(kW+9),ky=y+Math.floor(i/2)*(kH+5);
       doc.setFillColor(...LG);doc.rect(kx,ky,kW,kH,'F');
-      doc.setFillColor(...k.c);doc.rect(kx,ky,2,kH,'F');
-      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);doc.text(k.l.toUpperCase(),kx+4,ky+6);
-      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...BK);doc.text(k.v,kx+4,ky+15);
-      if(k.s){doc.setFontSize(6.5);doc.setFont('helvetica','normal');doc.setTextColor(...GY);doc.text(k.s,kx+4,ky+20);}
+      doc.setFillColor(...k.c);doc.rect(kx,ky,2.5,kH,'F');
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);
+      doc.text(k.l.toUpperCase(),kx+5,ky+6);
+      doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(...BK);
+      doc.text(k.v,kx+5,ky+15);
+      if(k.s){doc.setFontSize(6.5);doc.setFont('helvetica','normal');doc.setTextColor(...GY);doc.text(k.s,kx+5,ky+20);}
     });
-    y+=kH*2+5*2+8;
+    y+=kH*2+5+8;
 
-    // DECOMPOSIÇÃO INVESTIMENTO
-    chkY(40);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('DECOMPOSICAO DO INVESTIMENTO',M,y);y+=5;
-    const invRows=[
-      ['Preco de compra',eur(p.purchasePrice||0)],
-      ['Impostos e custos aquisicao',eur((a.lg?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0))],
-      ['Obras e reabilitacao',eur(a.wrkTotal||0)],
-      ['Custos de financiamento',eur(a.financingInterestHolding||0)],
-      ['Holding/manutencao',eur(a.holdingTotal||0)],
-      ['TOTAL INVESTIDO',eur(a.capTotal||0)],
+    // ── MÉTRICAS AVANÇADAS DE INVESTIMENTO ──────────────────────
+    chkY(55);
+    doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+    doc.text('MÉTRICAS DE AVALIAÇÃO — PADRÕES INTERNACIONAIS DE INVESTIMENTO IMOBILIÁRIO',M+3,y+5);
+    y+=11;
+
+    const equityInv=a.equityInvested||a.capTotal||1;
+    const equityMult=a.netFinal>0?(a.netFinal/equityInv):0;
+    const margemLiq=a.saleRef>0?((a.netProfit||0)/a.saleRef*100):0;
+    const costRatio=a.saleRef>0?(a.capTotal/a.saleRef*100):0;
+    const spread=ai&&ai.psm&&p.areaM2>0&&a.saleRef>0?((a.saleRef/p.areaM2)-ai.psm):0;
+
+    const metrics=[
+      ['ROI Líquido (pós-imposto)','Return on Investment',pct(a.roiNet||0),'Benchmark PT Flip: 15-25%',a.roiNet>=20?GR:a.roiNet>=12?AM:RD],
+      ['Equity Multiple','EM — Multiplicador do Capital',equityMult>0?equityMult.toFixed(2)+'x':'—','Target >1.2x (conservador)',equityMult>=1.3?GR:equityMult>=1.1?AM:RD],
+      ['Margem Líquida','Net Profit Margin',margemLiq>0?margemLiq.toFixed(1)+'%':'—','Target >12% sobre venda',margemLiq>=15?GR:margemLiq>=8?AM:RD],
+      ['Cost-to-Value Ratio','CVR — Eficiência do capital',costRatio>0?costRatio.toFixed(1)+'%':'—','< 75% é saudável',costRatio<=70?GR:costRatio<=80?AM:RD],
+      ['Spread vs Mercado','Diferencial de valorização',spread!==0?(spread>0?'+':'')+eur(spread)+'/m²':'—',ai&&ai.psm?'Mercado: '+eur(ai.psm)+'/m²':'-',spread>200?GR:spread>0?AM:RD],
+      ['Prazo de Saída','Holding period',p.targetExitDate?p.targetExitDate:'—',a.holdMonths?a.holdMonths+' meses de holding':'-',[148,163,184]],
     ];
-    invRows.forEach(([l,v],i)=>{
-      const hi=l.startsWith('TOTAL');
-      if(hi){doc.setFillColor(...DK);doc.rect(M,y-3,W-M*2,9,'F');doc.setTextColor(...WH);}
-      else{if(i%2===0){doc.setFillColor(...LG);doc.rect(M,y-3,W-M*2,8,'F');}doc.setTextColor(...GY);}
-      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8);
-      doc.text(l,M+3,y+2);doc.text(v,W-M-3,y+2,{align:'right'});
-      y+=hi?10:8;
-    });y+=6;
 
-    // WATERFALL
-    chkY(70);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('WATERFALL FINANCEIRO',M,y);y+=5;
+    metrics.forEach(([title,sub,val,bench,col],i)=>{
+      const ry=y+(i*11);
+      if(i%2===0){doc.setFillColor(...LG);doc.rect(M,ry-2,W-M*2,10,'F');}
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...BK);
+      doc.text(title,M+3,ry+3);
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);
+      doc.text(sub,M+3,ry+8);
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...col);
+      doc.text(val,W-M-3,ry+3,{align:'right'});
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GY);
+      doc.text(bench,W-M-3,ry+8,{align:'right'});
+    });
+    y+=metrics.length*11+8;
+
+    // ── WATERFALL ────────────────────────────────────────────────
+    chkY(72);
+    doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+    doc.text('WATERFALL FINANCEIRO',M+3,y+5);y+=11;
     const wf=[
-      ['Venda referencia',eur(a.saleRef||0),true],
-      ['Comissao + custos venda','-'+eur((a.ami||0)+(a.saleOth||0)),false],
-      ['Venda liquida',eur(a.saleNet||0),true],
-      ['Capital a reembolsar','-'+eur(a.capTotal||0),false],
-      ['Lucro bruto',(a.profit||0)>=0?eur(a.profit||0):'-'+eur(Math.abs(a.profit||0)),(a.profit||0)>=0],
-      ['Imposto mais-valias (50%x28%)','-'+eur(a.taxTotal||0),false],
-      ['LUCRO LIQUIDO POS-IMPOSTO',eur(a.netProfit||0),(a.netProfit||0)>=0,true],
+      ['Valor de venda (referência)',eur(a.saleRef||0),true,false],
+      ['(-) Comissão mediação + custos venda','-'+eur((a.ami||0)+(a.saleOth||0)),false,false],
+      ['(=) Receita líquida de venda',eur(a.saleNet||0),true,false],
+      ['(-) Reembolso de capital','-'+eur(a.capTotal||0),false,false],
+      ['(=) Lucro bruto (EBITDA)',eur(a.profit||0),(a.profit||0)>=0,false],
+      ['(-) Imposto mais-valias IRS (50%×28%)','-'+eur(a.taxTotal||0),false,false],
+      ['(=) LUCRO LÍQUIDO PÓS-IMPOSTO',eur(a.netProfit||0),(a.netProfit||0)>=0,true],
     ];
     wf.forEach(([l,v,pos,hi],i)=>{
       const ry=y;
-      if(hi){doc.setFillColor(...GR);doc.rect(M,ry-3,W-M*2,9,'F');doc.setTextColor(...WH);}
-      else if(i%2===0){doc.setFillColor(...LG);doc.rect(M,ry-3,W-M*2,8,'F');doc.setTextColor(...GY);}
+      if(hi){doc.setFillColor(...GR);doc.rect(M,ry-3,W-M*2,10,'F');doc.setTextColor(...WH);}
+      else if(i%2===0){doc.setFillColor(...LG);doc.rect(M,ry-3,W-M*2,9,'F');doc.setTextColor(...GY);}
       else doc.setTextColor(...GY);
-      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8);
+      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8.5);
+      if(!hi)doc.setTextColor(...GY);
       doc.text(l,M+3,ry+2);
       doc.setTextColor(...(hi?WH:(pos?GR:RD)));doc.text(v,W-M-3,ry+2,{align:'right'});
+      y+=hi?10:9;
+    });y+=8;
+
+    // ── DECOMPOSIÇÃO DO INVESTIMENTO ─────────────────────────────
+    chkY(55);
+    doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+    doc.text('DECOMPOSIÇÃO DO CAPITAL INVESTIDO',M+3,y+5);y+=11;
+
+    const invRows=[
+      ['Preço de aquisição',eur(p.purchasePrice||0),''],
+      ['Custos de aquisição (IMT, IS, registos)',eur(a.lg?a.lg.imt+a.lg.is+a.lg.reg+a.lg.cert:0),''],
+      ['Obras e reabilitação',eur(a.wrkTotal||0),''],
+      ['Custos de financiamento',eur(a.financingInterestHolding||0),''],
+      ['Holding / Manutenção',eur(a.holdingTotal||0),''],
+      ['TOTAL CAPITAL INVESTIDO',eur(a.capTotal||0),'bold'],
+    ];
+    const totInv=a.capTotal||1;
+    invRows.forEach(([l,v,weight],i)=>{
+      const hi=weight==='bold';
+      if(hi){doc.setFillColor(...DK);doc.rect(M,y-3,W-M*2,9,'F');doc.setTextColor(...WH);}
+      else{if(i%2===0){doc.setFillColor(...LG);doc.rect(M,y-3,W-M*2,8,'F');}doc.setTextColor(...GY);}
+      doc.setFont('helvetica',hi?'bold':'normal');doc.setFontSize(hi?9:8.5);
+      doc.text(l,M+3,y+2);
+      if(!hi)doc.setTextColor(...AM);
+      doc.text(v,W-M-3,y+2,{align:'right'});
       y+=hi?10:8;
     });y+=8;
 
-    // FISCAL
+    // ── BARRAS ESTRUTURA DE CUSTOS ────────────────────────────────
+    chkY(40);
+    doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+    doc.text('ESTRUTURA DE CUSTOS',M+3,y+5);y+=11;
+    const costBars=[
+      ['Aquisição',a.acqAll||0,AM],['Obras',a.wrkTotal||0,BL],
+      ['Venda/Comissões',(a.ami||0)+(a.saleOth||0),RD],['Imposto',a.taxTotal||0,PU]
+    ];
+    const totCosts=costBars.reduce((s,c)=>s+(c[1]||0),0)||1;
+    const bW=W-M*2-50;
+    costBars.forEach(([l,v,c])=>{
+      const pv=Math.min(1,v/totCosts);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);doc.text(l,M,y+3);
+      doc.setFillColor(...LGBDR);doc.rect(M+34,y-1,bW,6,'F');
+      if(pv>0){doc.setFillColor(...c);doc.rect(M+34,y-1,bW*pv,6,'F');}
+      doc.setFont('helvetica','bold');doc.setTextColor(...c);
+      doc.text(eur(v)+' ('+Math.round(pv*100)+'%)',W-M,y+3,{align:'right'});
+      y+=10;
+    });y+=6;
+
+    // ── FISCAL ───────────────────────────────────────────────────
     chkY(50);
-    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('APURAMENTO FISCAL — IRS Cat. G (Art. 43 CIRS)',M,y);y+=4;
+    doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+    doc.text('APURAMENTO FISCAL — IRS Cat. G (Art. 43.º CIRS)',M+3,y+5);y+=5;
     doc.autoTable({
-      startY:y,head:[['Rubrica','Valor']],
-      body:[['Lucro bruto',eur(a.profit||0)],['Base tributavel (50%)',eur(a.taxableGain||0)],['Taxa autonoma','28%'],['Taxa efectiva','14% (50%x28%)'],['Imposto estimado','-'+eur(a.taxTotal||0)],['Lucro liquido pos-imposto',eur(a.netProfit||0)]],
-      theme:'striped',styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
+      startY:y,head:[['Rubrica Fiscal','Valor']],
+      body:[
+        ['Lucro bruto (mais-valia)',eur(a.profit||0)],
+        ['Base tributável (inclusão 50%)',eur(a.taxableGain||0)],
+        ['Taxa autónoma mais-valias','28%'],
+        ['Taxa efectiva real sobre lucro bruto','14% (50%×28%)'],
+        ['Imposto mais-valias estimado','-'+eur(a.taxTotal||0)],
+        ['Lucro líquido pós-imposto',eur(a.netProfit||0)],
+      ],
+      theme:'striped',
+      styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
       headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold'},
-      columnStyles:{1:{halign:'right',fontStyle:'bold'}},margin:{left:M,right:M}
+      columnStyles:{1:{halign:'right',fontStyle:'bold'}},
+      margin:{left:M,right:M}
     });
     y=doc.lastAutoTable.finalY+10;
 
-    // SECÇÃO AI
+    // ── ANÁLISE DE MERCADO (IA) ───────────────────────────────────
     if(ai&&(ai.med>0||ai.saleExp>0)){
-      chkY(50);
-      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...DK);doc.text('ANALISE DE MERCADO — IDEALISTA.PT',M,y);y+=5;
+      chkY(55);
+      doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+      doc.text('ANÁLISE DE MERCADO — PESQUISA IDEALISTA.PT EM TEMPO REAL',M+3,y+5);y+=11;
+
       // Caixa de posicionamento
       const posC2={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD}[String(ai.pos)]||AM;
-      const posT2={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO','0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'}[String(ai.pos)]||'EM ANALISE';
-      doc.setFillColor(...posC2);doc.rect(M,y,W-M*2,24,'F');
-      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...WH);
-      doc.text(posT2,M+4,y+7);
+      const posT2={'-2':'MUITO ABAIXO DO MERCADO','-1':'ABAIXO DO MERCADO','0':'DENTRO DO MERCADO','1':'ACIMA DO MERCADO','2':'MUITO ACIMA DO MERCADO'}[String(ai.pos)]||'EM ANÁLISE';
+      doc.setFillColor(...posC2);doc.rect(M,y,W-M*2,26,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...WH);
+      doc.text(posT2,W/2,y+8,{align:'center'});
       doc.setFontSize(8);doc.setFont('helvetica','normal');
-      doc.text('Preco pedido: '+eur(ai.saleExp||0)+(ai.salePerM2?' ('+eur(ai.salePerM2)+'/m2)':''),M+4,y+14);
-      doc.text('Mediana mercado '+String(ai.loc||'').replace(/[^\w\s,.-]/g,'')+(ai.psm?' ('+eur(ai.psm)+'/m2)':'')+(ai.n?' | '+ai.n+' anuncios':''),M+4,y+20);
-      y+=30;
+      const locStr=String(ai.loc||p.city||'').replace(/[^\w\s,.-]/g,'');
+      doc.text('Preço pedido: '+eur(ai.saleExp||0)+(ai.salePerM2?' ('+eur(ai.salePerM2)+'/m²)':'')+'   |   Mediana '+locStr+': '+eur(ai.med||0)+(ai.psm?' ('+eur(ai.psm)+'/m²)':''),W/2,y+16,{align:'center'});
+      doc.text('Intervalo: '+eur(ai.vmin||0)+' – '+eur(ai.vmax||0)+(ai.n?' | '+ai.n+' anúncios no Idealista':''),W/2,y+22,{align:'center'});
+      y+=32;
+
+      // Texto posicionamento
       if(ai.posText){
+        chkY(20);
         doc.setFont('helvetica','italic');doc.setFontSize(8.5);doc.setTextColor(...GY);
-        const pl=doc.splitTextToSize(ai.posText,W-M*2-4);
-        doc.text(pl,M,y);y+=pl.length*4.5+6;
+        const pl=doc.splitTextToSize(ai.posText,W-M*2-4);doc.text(pl,M,y);y+=pl.length*4.5+6;
       }
+
       // Comparáveis
       if(ai.comps&&ai.comps.length){
         chkY(35);
-        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...DK);doc.text('Comparaveis Idealista.pt — '+String(ai.loc||'').replace(/[^\w\s,.-]/g,''),M,y);y+=3;
+        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...DK);
+        doc.text('Imóveis Comparáveis — '+locStr+' · Idealista.pt',M,y);y+=4;
         doc.autoTable({
-          startY:y,head:[['N','Area','Preco de Venda','Eur/m2','vs Pedido']],
+          startY:y,
+          head:[['Comparável','Área','Preço de Venda','€/m²','vs Preço Pedido']],
           body:ai.comps.slice(0,3).map((c,i)=>{
             const cp=c.p||0,ca=c.a||0,cpm=ca>0?Math.round(cp/ca):0;
             const dif=ai.saleExp&&cp?((cp-ai.saleExp)/ai.saleExp*100):0;
-            return[String(i+1)+'.',ca+'m2',eur(cp),eur(cpm),(dif!==0?(dif>0?'+':'')+dif.toFixed(0)+'%':'—')];
+            return['Imóvel '+String(i+1)+' — '+String(ai.typo||p.typology||'—'),
+              ca>0?ca+'m²':'—',eur(cp),eur(cpm),dif!==0?(dif>0?'+':'')+dif.toFixed(0)+'%':'='];
           }),
-          theme:'grid',styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
+          theme:'grid',
+          styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
           headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold',fontSize:8},
           alternateRowStyles:{fillColor:LG},
-          columnStyles:{0:{cellWidth:10},2:{halign:'right',fontStyle:'bold'},3:{halign:'right'},4:{halign:'right'}},
+          columnStyles:{2:{halign:'right',fontStyle:'bold'},3:{halign:'right'},4:{halign:'right'}},
           margin:{left:M,right:M}
         });
         y=doc.lastAutoTable.finalY+8;
       }
-      // Riscos & Ops
-      if((ai.ris?.length||ai.ops?.length)){
-        chkY(30);
+
+      // Riscos & Oportunidades
+      if(ai.ris?.length||ai.ops?.length){
+        chkY(35);
         const hw=(W-M*2-6)/2;
-        if(ai.ris?.length){doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...RD);doc.text('RISCOS',M,y);}
-        if(ai.ops?.length){doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...GR);doc.text('OPORTUNIDADES',M+hw+6,y);}
-        y+=4;
+        if(ai.ris?.length){doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...RD);doc.text('FACTORES DE RISCO',M,y);}
+        if(ai.ops?.length){doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...GR);doc.text('OPORTUNIDADES DE VALOR',M+hw+6,y);}
+        y+=5;
         const maxR=Math.max(ai.ris?.length||0,ai.ops?.length||0);
         for(let i=0;i<maxR;i++){
           const rv=(ai.ris||[])[i]||'',ov=(ai.ops||[])[i]||'';
           doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...BK);
-          if(rv){const l=doc.splitTextToSize('• '+rv,hw);doc.text(l,M,y);}
-          if(ov){const l=doc.splitTextToSize('• '+ov,hw);doc.text(l,M+hw+6,y);}
-          y+=9;
+          if(rv){const l=doc.splitTextToSize('▸ '+rv,hw);doc.text(l,M,y);}
+          if(ov){const l=doc.splitTextToSize('▸ '+ov,hw);doc.text(l,M+hw+6,y);}
+          y+=10;
         }y+=4;
       }
-      // Resumo executivo
+
+      // Resumo executivo — peça central
       if(ai.res){
         chkY(40);
         doc.setFillColor(...DK);doc.rect(M,y,W-M*2,9,'F');
         doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...WH);
-        doc.text('RESUMO EXECUTIVO PARA INVESTIDORES',M+3,y+6);y+=13;
+        doc.text('RESUMO EXECUTIVO PARA INVESTIDORES',M+4,y+6);y+=13;
         doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...BK);
         const sl=doc.splitTextToSize(ai.res,W-M*2-4);
-        sl.forEach(l=>{if(y>H-22){newPage();}doc.text(l,M+2,y);y+=5;});
-        y+=6;
+        sl.forEach(l=>{
+          if(y>H-22){addFooterPage(doc,W,H,M,doc.internal.getNumberOfPages(),null,logo);doc.addPage();y=20;}
+          doc.text(l,M+2,y);y+=5;
+        });y+=6;
       }
     }
 
-    // AVISO LEGAL
-    chkY(18);
-    doc.setFillColor(...LG);doc.rect(M,y,W-M*2,14,'F');
+    // ── DISTRIBUIÇÃO DE INVESTIDORES ─────────────────────────────
+    if(a.invRes&&a.invRes.length){
+      chkY(40);
+      doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+      doc.text('DISTRIBUIÇÃO POR INVESTIDOR',M+3,y+5);y+=5;
+      doc.autoTable({
+        startY:y,head:[['Investidor','Capital (€)','Split (%)','Retorno Esperado (€)']],
+        body:a.invRes.map(inv=>[inv.name||'—',eur(inv.capital||0),pct(inv.split||0),eur(inv.net||0)]),
+        theme:'striped',styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
+        headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold'},
+        columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right',fontStyle:'bold'}},
+        margin:{left:M,right:M}
+      });
+      y=doc.lastAutoTable.finalY+10;
+    }
+
+    // ── AVISO LEGAL ───────────────────────────────────────────────
+    chkY(22);
+    doc.setFillColor(...LG);doc.rect(M,y,W-M*2,18,'F');
+    doc.setDrawColor(...LGBDR);doc.setLineWidth(0.3);doc.rect(M,y,W-M*2,18,'S');
+    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...BK);
+    doc.text('AVISO LEGAL E LIMITAÇÕES',M+3,y+5);
     doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GY);
-    const disc=doc.splitTextToSize('AVISO LEGAL: Relatorio informativo. Nao constitui aconselhamento financeiro ou juridico. Valores estimados. Confirmar obrigacoes fiscais com profissional. PropInvest Pro - Tessa Advisors.',W-M*2-6);
-    doc.text(disc,M+3,y+4);
+    const disc=doc.splitTextToSize(
+      'Este relatório foi preparado pela Tessa Advisors através da plataforma PropInvest Pro para fins informativos exclusivamente. '+
+      'Não constitui aconselhamento financeiro, fiscal ou jurídico. Os valores apresentados são estimativas baseadas nos dados '+
+      'fornecidos pelo utilizador e em pesquisa de mercado automatizada. As mais-valias e obrigações fiscais devem ser confirmadas '+
+      'com contabilista ou advogado fiscal certificado. Investir em imobiliário implica riscos, incluindo perda parcial ou total do capital.',
+      W-M*2-6);
+    doc.text(disc,M+3,y+10);
 
-    // FOOTERS
-    const np=doc.internal.getNumberOfPages();
-    for(let i=1;i<=np;i++)addFooterPage(doc,W,H,M,i,np,typeof LOGO!=='undefined'?LOGO:null);
+    // ── FOOTERS EM TODAS AS PÁGINAS ───────────────────────────────
+    const totalPgs=doc.internal.getNumberOfPages();
+    for(let pg=1;pg<=totalPgs;pg++) addFooterPage(doc,W,H,M,pg,totalPgs,logo);
 
-    doc.save('TessaAdvisors_'+(p.name||'Relatorio').replace(/[^a-zA-Z0-9]/g,'_').slice(0,25)+'_'+new Date().toISOString().slice(0,10)+'.pdf');
-    showToast('✅ PDF gerado com sucesso!');
+    const fname='TessaAdvisors_InvestorReport_'+
+      (p.name||'Projecto').replace(/[^a-zA-Z0-9]/g,'_').slice(0,25)+
+      '_'+new Date().toISOString().slice(0,10)+'.pdf';
+    doc.save(fname);
+    showToast('✅ Relatório PDF gerado!');
     document.getElementById('aiMod')?.remove();
+
   }catch(e){
     showToast('Erro PDF: '+e.message);
     console.error('PDF error:',e);
   }
 }
+
+
 
 // ── Check Share Link ───────────────────────────────────────────
 function checkShareLink(){
