@@ -2141,9 +2141,14 @@ function renderInvPage(p,a){
     </div>`:''}
     <div id="invCards"></div>
     ${a&&a.invRes.length?`<div class="card" style="margin-top:12px"><div class="card-title">Investido vs Lucro vs Imposto</div><div class="chart-wrap tall"><canvas id="cInv"></canvas></div></div>`:''}
+    ${p.workCosts&&p.workCosts.length&&p.investors.length?`<div class="card" style="margin-top:12px"><div class="card-title">🔨 Obras por Investidor</div><div class="chart-wrap tall"><canvas id="cObras"></canvas></div></div>`:''}  
   `;
   renderInvCards(p,a);
-  if(a&&a.invRes.length)requestAnimationFrame(()=>renderInvChart(a));
+  if(a&&a.invRes.length){
+    requestAnimationFrame(()=>renderInvChart(a));
+    // Render obras summary chart if there are work costs
+    if(p.workCosts&&p.workCosts.length) setTimeout(()=>renderObrasChart(p,a),100);
+  }
 }
 function renderInvCards(p,a){
   const c=q('invCards');if(!c)return;
@@ -2151,28 +2156,106 @@ function renderInvCards(p,a){
   c.innerHTML=p.investors.map(inv=>{
     const res=a?a.invRes.find(r=>r.id===inv.id):null;
     const tot=res?res.tot:Number(inv.entryCapitalAmount||0);
-    const capTotal=a?a.capTotal:0,barW=capTotal>0?Math.min(100,tot/capTotal*100):0;
+    const capTotal=a?a.capTotal:0;
+    const barW=capTotal>0?Math.min(100,tot/capTotal*100):0;
+
+    // Breakdown de obras para este investidor
+    const myWorks=p.workCosts.filter(w=>w.investorId===inv.id);
+    const myWrkTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
+    const myAcq=res?res.adm:0;
+    const myOth=res?res.oth:0;
+    const myBuy=Number(inv.entryCapitalAmount||0);
+    const totalWrkAll=a?a.wrkTotal:0;
+    const wrkBarW=totalWrkAll>0?Math.min(100,myWrkTotal/totalWrkAll*100):0;
+
+    // Obras por especialidade para este investidor
+    const bySpec={};
+    myWorks.forEach(w=>{
+      const sp=w.specialty||'Outro';
+      bySpec[sp]=(bySpec[sp]||0)+Number(w.amount||0);
+    });
+    const specEntries=Object.entries(bySpec).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const specMax=specEntries.length?specEntries[0][1]:1;
+
     return`<div class="inv-card">
+      <!-- Cabeçalho -->
       <div class="inv-head">
         <div class="inv-dot" style="background:${inv.colorHex}22;color:${inv.colorHex}">${(inv.name||'?')[0].toUpperCase()}</div>
-        <div style="flex:1"><div class="inv-name">${esc(inv.name||'Sem nome')}</div><div class="inv-role">${esc(inv.role)} · Split: ${pct(inv.profitSplitPct)}</div></div>
+        <div style="flex:1">
+          <div class="inv-name">${esc(inv.name||'Sem nome')}</div>
+          <div class="inv-role">${esc(inv.role||'—')} · Split lucro: ${pct(inv.profitSplitPct)}</div>
+        </div>
         <div style="display:flex;gap:5px">
           <button class="btn btn-icon" onclick="openInvM('${inv.id}')">✏️</button>
           <button class="btn btn-icon btn-danger" onclick="rmInv('${inv.id}')">🗑️</button>
         </div>
       </div>
+
+      <!-- KPIs financeiros -->
       <div class="inv-stats">
-        <div class="is"><div class="il">Capital entrada</div><div class="iv">${eur(inv.entryCapitalAmount)}</div></div>
-        <div class="is"><div class="il">Total investido</div><div class="iv">${eur(tot)}</div></div>
-        <div class="is"><div class="il">Taxa fiscal est.</div><div class="iv">${pct(inv.taxRateEstimatedPct)}</div></div>
+        <div class="is"><div class="il">Capital entrada</div><div class="iv">${eur(myBuy)}</div></div>
+        <div class="is"><div class="il">Investido em obras</div><div class="iv" style="color:var(--blue)">${eur(myWrkTotal)}</div></div>
+        <div class="is"><div class="il">Custos aquisição</div><div class="iv">${eur(myAcq)}</div></div>
+        <div class="is"><div class="il">Outros custos</div><div class="iv">${eur(myOth)}</div></div>
+        <div class="is"><div class="il">Total investido</div><div class="iv" style="font-weight:700;color:var(--text)">${eur(tot)}</div></div>
         ${res?`
-        <div class="is"><div class="il">Lucro bruto</div><div class="iv" style="color:var(--good)">${eur(res.gp)}</div></div>
-        <div class="is"><div class="il">Imposto est.</div><div class="iv" style="color:var(--bad)">${eur(res.tax)}</div></div>
-        <div class="is"><div class="il">Valor a receber</div><div class="iv" style="color:var(--accent)">${eur(res.net)}</div></div>`:''}
+        <div class="is"><div class="il">Lucro bruto (${pct(inv.profitSplitPct)} split)</div><div class="iv" style="color:var(--good)">${eur(res.gp)}</div></div>
+        <div class="is"><div class="il">Imposto estimado</div><div class="iv" style="color:var(--bad)">${eur(res.tax)}</div></div>
+        <div class="is"><div class="il">Valor a receber</div><div class="iv" style="color:var(--accent);font-weight:700">${eur(res.net)}</div></div>`:''}
       </div>
-      <div class="prog"><div class="prog-fill" style="width:${barW}%;background:${inv.colorHex}"></div></div>
+
+      <!-- Barra capital total -->
+      <div style="margin:8px 0 4px">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:3px">
+          <span>% do capital total do projecto</span>
+          <span>${barW.toFixed(1)}%</span>
+        </div>
+        <div class="prog"><div class="prog-fill" style="width:${barW}%;background:${inv.colorHex}"></div></div>
+      </div>
+
+      <!-- Secção de Obras -->
+      ${myWrkTotal>0?`<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--blue)">🔨 Investimento em Obras</div>
+          <div style="font-size:11px;font-weight:700;color:var(--blue)">${eur(myWrkTotal)}</div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:3px">
+            <span>% das obras totais do projecto</span>
+            <span>${wrkBarW.toFixed(1)}%</span>
+          </div>
+          <div style="height:6px;background:var(--surface);border-radius:999px;overflow:hidden">
+            <div style="height:100%;width:${wrkBarW}%;background:var(--blue);border-radius:999px"></div>
+          </div>
+        </div>
+        ${specEntries.length?`<div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Por Especialidade</div>
+        ${specEntries.map(([sp,val])=>{
+          const spPct=Math.round(val/specMax*100);
+          return '<div style="margin-bottom:7px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'
+            +'<span style="font-size:10px;color:var(--text2);max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(sp)+'</span>'
+            +'<span style="font-size:10px;font-weight:700;color:var(--blue)">'+eur(val)+'</span>'
+            +'</div>'
+            +'<div style="height:5px;background:var(--surface);border-radius:999px;overflow:hidden">'
+            +'<div style="height:100%;width:'+spPct+'%;background:var(--blue);opacity:.7;border-radius:999px"></div>'
+            +'</div>'
+            +'</div>';
+        }).join('')}`:''}
+        ${myWorks.length>0?`<div style="margin-top:8px">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Registos (${myWorks.length})</div>
+          ${myWorks.slice(0,5).map(w=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:10px;color:var(--text2)">${esc(w.specialty||'—')}${w.supplier?' · '+esc(w.supplier):''}</div>
+              ${w.date?`<div style="font-size:9px;color:var(--muted)">${w.date}</div>`:''}
+            </div>
+            <div style="font-size:11px;font-weight:700;color:var(--text);flex-shrink:0">${eur(w.amount)}</div>
+          </div>`).join('')}
+          ${myWorks.length>5?`<div style="font-size:10px;color:var(--muted);text-align:center;padding-top:6px">+ ${myWorks.length-5} registos adicionais</div>`:''}
+        </div>`:''}
+      </div>`:'<div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:8px;font-size:11px;color:var(--muted);text-align:center">Sem obras registadas para este investidor</div>'}
     </div>`;
   }).join('');
+
 }
 function renderInvChart(a){
   dc('cInv');const ctx=q('cInv');if(!ctx)return;
@@ -2186,6 +2269,50 @@ function renderInvChart(a){
     ]
   },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{family:'DM Sans',size:11},padding:12,boxWidth:10}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${eur(c.raw)}`}}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#94a3b8',font:{size:10},callback:v=>eur(v)},grid:{color:'rgba(255,255,255,.04)'}}},barPercentage:.6}});
 }
+
+function renderObrasChart(p,a){
+  if(!p||!a||!p.workCosts.length)return;
+  if(CHS['cObras']){try{CHS['cObras'].destroy();}catch(e){}delete CHS['cObras'];}
+  const el=document.getElementById('cObras');if(!el)return;
+
+  // Group: for each investor, sum their work costs
+  const invs=p.investors;
+  const wrkByInv=invs.map(inv=>({
+    name:inv.name||'?',
+    color:inv.colorHex||'#f59e0b',
+    total:p.workCosts.filter(w=>w.investorId===inv.id).reduce((s,w)=>s+Number(w.amount||0),0),
+  })).filter(x=>x.total>0);
+
+  if(!wrkByInv.length)return;
+
+  CHS['cObras']=new Chart(el,{
+    type:'bar',
+    data:{
+      labels:wrkByInv.map(x=>x.name),
+      datasets:[{
+        label:'Investido em Obras',
+        data:wrkByInv.map(x=>x.total),
+        backgroundColor:wrkByInv.map(x=>x.color+'99'),
+        borderColor:wrkByInv.map(x=>x.color),
+        borderWidth:2,
+        borderRadius:6,
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:function(ctx){return ' '+eur(ctx.raw);}}}
+      },
+      scales:{
+        x:{ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}},
+        y:{ticks:{color:'#94a3b8',font:{size:10},callback:function(v){return eur(v);}},grid:{color:'rgba(255,255,255,.04)'}}
+      }
+    }
+  });
+}
+
 
 // ─────────────────────────────────────────────────────────────
 //  REPORT PAGE
@@ -2541,13 +2668,46 @@ function exportPDF(){
 
       // ── 8. APURAMENTO POR INVESTIDOR ────────────────────────
       if(a.invRes.length){
+        // Tabela sumário de investidores
         AT('8. Apuramento por Investidor',
           a.invRes.map(inv=>[
-            `${inv.name||'?'} (${inv.role} · ${pct(inv.profitSplitPct)} split)`,
-            eur(inv.tot),eur(inv.gp),eur(inv.tax),eur(inv.net)
+            `${inv.name||'?'} (${inv.role||'—'} · ${pct(inv.profitSplitPct)} split)`,
+            eur(inv.buy||0),eur(inv.wrk||0),eur(inv.tot),
+            eur(inv.gp),eur(inv.tax),eur(inv.net)
           ]),
-          ['Investidor','Capital Inv.','Lucro Bruto','Imposto','Valor Final']
+          ['Investidor','Capital Entrada','Invest. Obras','Total Investido','Lucro Bruto','Imposto','Valor Final']
         );
+
+        // Detalhe de obras por investidor (novo)
+        const invWithWorks=a.invRes.filter(inv=>{
+          return p.workCosts.some(w=>w.investorId===inv.id&&Number(w.amount||0)>0);
+        });
+        if(invWithWorks.length>0&&p.workCosts.length>0){
+          // Cabeçalho secção obras
+          const obrasSec='8b. Detalhe de Obras por Investidor';
+          const totalWrkProj=a.wrkTotal||1;
+          let obrasRows=[];
+          let obrasHeaders=['Investidor','Especialidade','Fornecedor','Data','Valor','% do Total Obras'];
+          invWithWorks.forEach(inv=>{
+            const myWorks=p.workCosts.filter(w=>w.investorId===inv.id&&Number(w.amount||0)>0);
+            const myTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
+            const myPct=(myTotal/totalWrkProj*100).toFixed(1)+'%';
+            // Linha de cabeçalho do investidor
+            obrasRows.push([`▶ ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
+            // Linhas individuais
+            myWorks.forEach(w=>{
+              obrasRows.push([
+                '',
+                w.specialty||'—',
+                w.supplier||'—',
+                w.date||'—',
+                eur(w.amount),
+                (Number(w.amount||0)/totalWrkProj*100).toFixed(1)+'%'
+              ]);
+            });
+          });
+          AT(obrasSec,obrasRows,obrasHeaders);
+        }
       }
 
       // ── 9. ESTIMATIVA DE MERCADO ─────────────────────────────
@@ -3779,19 +3939,92 @@ async function exportAIPDF(p,a,ai){
 
     // ── DISTRIBUIÇÃO DE INVESTIDORES ─────────────────────────────
     if(a.invRes&&a.invRes.length){
-      chkY(40);
+      chkY(50);
       doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
       doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
-      doc.text('DISTRIBUIÇÃO POR INVESTIDOR',M+3,y+5);y+=5;
+      doc.text('DISTRIBUIÇÃO POR INVESTIDOR — CAPITAL E OBRAS',M+3,y+5);y+=5;
+
+      // Main summary table
       doc.autoTable({
-        startY:y,head:[['Investidor','Capital (€)','Split (%)','Retorno Esperado (€)']],
-        body:a.invRes.map(inv=>[inv.name||'—',eur(inv.capital||0),pct(inv.split||0),eur(inv.net||0)]),
-        theme:'striped',styles:{fontSize:8.5,cellPadding:2.5,font:'helvetica',textColor:BK},
-        headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold'},
-        columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right',fontStyle:'bold'}},
+        startY:y,
+        head:[['Investidor','Capital Entrada','Total Investido','Split Lucro','Lucro Bruto','Imposto','Valor a Receber']],
+        body:a.invRes.map(inv=>[
+          inv.name||'—',
+          eur(inv.buy||0),
+          eur(inv.tot||0),
+          pct(inv.profitSplitPct||0),
+          eur(inv.gp||0),
+          eur(inv.tax||0),
+          eur(inv.net||0),
+        ]),
+        theme:'striped',
+        styles:{fontSize:7.5,cellPadding:2.5,font:'helvetica',textColor:BK},
+        headStyles:{fillColor:DK,textColor:WH,fontStyle:'bold',fontSize:7.5},
+        columnStyles:{
+          1:{halign:'right'},2:{halign:'right',fontStyle:'bold'},
+          3:{halign:'right'},4:{halign:'right',textColor:GR},
+          5:{halign:'right',textColor:RD},6:{halign:'right',fontStyle:'bold',textColor:AM}
+        },
         margin:{left:M,right:M}
       });
       y=doc.lastAutoTable.finalY+10;
+
+      // Obras breakdown per investor
+      const invWithWrk=a.invRes.filter(inv=>{
+        const wt=p.workCosts.filter(w=>w.investorId===inv.id).reduce((s,w)=>s+Number(w.amount||0),0);
+        return wt>0;
+      });
+
+      if(invWithWrk.length&&p.workCosts.length){
+        chkY(50);
+        doc.setFillColor(59,130,246);doc.rect(M,y,W-M*2,8,'F');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
+        doc.text('DETALHE DE INVESTIMENTO EM OBRAS POR INVESTIDOR',M+3,y+5);y+=11;
+
+        // Bar chart visual in PDF for each investor
+        const wrkTotal=a.wrkTotal||1;
+        const barAreaW=W-M*2;
+
+        invWithWrk.forEach((inv,idx)=>{
+          const myWorks=p.workCosts.filter(w=>w.investorId===inv.id);
+          const myWrkTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
+          if(!myWrkTotal)return;
+          const pct2=myWrkTotal/wrkTotal;
+
+          chkY(35);
+          // Investor header
+          doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...BK);
+          doc.text(inv.name||'—',M,y+4);
+          doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GY);
+          doc.text(eur(myWrkTotal)+' ('+Math.round(pct2*100)+'% das obras totais)',M,y+10);
+          y+=13;
+
+          // Progress bar
+          doc.setFillColor(...LGBDR);doc.rect(M,y,barAreaW,5,'F');
+          doc.setFillColor(59,130,246);doc.rect(M,y,barAreaW*pct2,5,'F');
+          y+=9;
+
+          // Specialty breakdown
+          const bySpec={};
+          myWorks.forEach(w=>{const sp=w.specialty||'Outro';bySpec[sp]=(bySpec[sp]||0)+Number(w.amount||0);});
+          const specRows=Object.entries(bySpec).sort((a,b)=>b[1]-a[1]).slice(0,5);
+          if(specRows.length){
+            doc.autoTable({
+              startY:y,
+              head:[['Especialidade','Fornecedor','Data','Valor']],
+              body:myWorks.slice(0,8).map(w=>[
+                w.specialty||'—',w.supplier||'—',w.date||'—',eur(w.amount)
+              ]),
+              theme:'plain',
+              styles:{fontSize:7.5,cellPadding:2,font:'helvetica',textColor:GY},
+              headStyles:{fillColor:LG,textColor:BK,fontStyle:'bold',fontSize:7,cellPadding:[2,3]},
+              columnStyles:{3:{halign:'right',fontStyle:'bold',textColor:BK}},
+              margin:{left:M+4,right:M}
+            });
+            y=doc.lastAutoTable.finalY+8;
+          }
+        });
+      }
     }
 
     // ── AVISO LEGAL ───────────────────────────────────────────────
