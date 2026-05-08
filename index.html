@@ -634,6 +634,148 @@ function blank(){
 // ─────────────────────────────────────────────────────────────
 //  FIREBASE — INIT & AUTH
 // ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+//  SISTEMA MULTI-UTILIZADOR — ADMIN + INVESTIDORES
+// ═══════════════════════════════════════════════════════════════════
+
+// ── CONSTANTE ADMIN ─────────────────────────────────────────────
+// Altera para o teu email Firebase
+const ADMIN_EMAIL = 'bmptorres@gmail.com';
+
+// ── FLAGS GLOBAIS ────────────────────────────────────────────────
+let IS_READ_ONLY = false;   // true quando investidor está logado
+let IS_ADMIN     = false;   // true quando admin está logado
+
+// ── ENVIAR CONVITE POR EMAIL ─────────────────────────────────────
+async function sendInvite(investorEmail, projectName){
+  if(!AUTH) return showToast('Firebase não disponível');
+  if(!investorEmail || !investorEmail.includes('@')){
+    return showToast('Email inválido');
+  }
+  const actionCodeSettings = {
+    url: window.location.origin + window.location.pathname + '?signIn=1',
+    handleCodeInApp: true,
+  };
+  try{
+    await AUTH.sendSignInLinkToEmail(investorEmail, actionCodeSettings);
+    // Guarda email localmente para confirmar depois
+    localStorage.setItem('inviteEmailSent', investorEmail);
+    showToast('✅ Convite enviado para '+investorEmail);
+  }catch(e){
+    showToast('Erro ao enviar convite: '+e.message);
+    console.error(e);
+  }
+}
+
+// ── VERIFICAR SE É LINK DE CONVITE ──────────────────────────────
+async function checkEmailSignInLink(){
+  if(!AUTH) return;
+  if(!AUTH.isSignInWithEmailLink(window.location.href)) return;
+  // É um link de convite — pede email se não guardado
+  let email = localStorage.getItem('inviteEmailSent');
+  if(!email){
+    email = window.prompt('Confirma o teu email para completar o acesso:');
+  }
+  if(!email) return;
+  try{
+    await AUTH.signInWithEmailLink(email, window.location.href);
+    localStorage.removeItem('inviteEmailSent');
+    // Limpa URL
+    window.history.replaceState({},'',window.location.pathname);
+    showToast('✅ Acesso confirmado! Bem-vindo.');
+  }catch(e){
+    showToast('Erro ao confirmar acesso: '+e.message);
+    console.error(e);
+  }
+}
+
+// ── CARREGAR PROJETOS PARTILHADOS (para investidores) ────────────
+async function loadSharedProjects(userEmail){
+  if(!DB) return;
+  try{
+    const snap = await DB.collection('shared_projects')
+      .where('allowedEmails','array-contains', userEmail.toLowerCase())
+      .get();
+    const projects = [];
+    snap.forEach(doc=>{
+      const d = doc.data();
+      if(d && d.project) projects.push(d.project);
+    });
+    if(projects.length > 0){
+      ST = { projects, activeProjectId: projects[0].id };
+      localStorage.setItem(SK, JSON.stringify(ST));
+      renderAll();
+    } else {
+      // Sem projetos partilhados ainda
+      ST = { projects:[], activeProjectId:'' };
+      const c = document.getElementById('dashContent');
+      if(c) c.innerHTML = `
+        <div class="empty" style="padding:60px 20px;text-align:center">
+          <div style="font-size:48px;margin-bottom:16px">📭</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:8px">Sem projetos disponíveis</div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.6">
+            Ainda não tens acesso a nenhum projeto.<br>
+            Aguarda que o administrador te adicione como investidor.
+          </div>
+        </div>`;
+    }
+  }catch(e){
+    console.error('Erro ao carregar projetos partilhados:', e);
+    showToast('Erro a carregar projetos');
+  }
+}
+
+// ── GUARDAR CÓPIA PARTILHADA (chamado pelo admin ao guardar) ─────
+async function syncSharedProjects(){
+  if(!DB || !IS_ADMIN) return;
+  // Para cada projeto que tem emails partilhados, actualiza shared_projects
+  for(const p of ST.projects){
+    const sharedEmails = (p.investors||[])
+      .filter(inv=>inv.email && inv.email.includes('@'))
+      .map(inv=>inv.email.toLowerCase());
+    if(sharedEmails.length === 0) continue;
+    try{
+      await DB.collection('shared_projects').doc(p.id).set({
+        project: p,
+        allowedEmails: sharedEmails,
+        ownerEmail: CURRENT_USER.email,
+        _updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }catch(e){
+      console.warn('Erro ao sincronizar projeto partilhado:', p.name, e);
+    }
+  }
+}
+
+// ── BANDA READ-ONLY (visível para investidores) ──────────────────
+function showReadOnlyBanner(){
+  if(document.getElementById('roBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'roBanner';
+  b.style.cssText = [
+    'position:fixed;top:0;left:0;right:0;z-index:9999',
+    'background:linear-gradient(135deg,#1e3a5f,#1a4080)',
+    'color:#fff;padding:8px 16px',
+    'display:flex;align-items:center;justify-content:space-between',
+    'font-size:12px;font-family:"DM Sans",sans-serif',
+    'box-shadow:0 2px 12px rgba(0,0,0,.3)'
+  ].join(';');
+  b.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">👁️</span>
+      <div>
+        <strong style="font-size:13px">Modo Leitura</strong>
+        <span style="color:rgba(255,255,255,.75);margin-left:6px">Tens acesso apenas de consulta aos projetos onde és investidor</span>
+      </div>
+    </div>
+    <button onclick="AUTH.signOut()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Sair</button>
+  `;
+  document.body.prepend(b);
+  // Ajusta padding do conteúdo
+  document.querySelector('.app-shell').style.paddingTop = '42px';
+}
+
+
 let FB=null,DB=null,AUTH=null,CURRENT_USER=null,SYNC_UNSUB=null;
 
 function initFirebase(){
@@ -643,13 +785,25 @@ function initFirebase(){
     AUTH=firebase.auth();
     DB=firebase.firestore();
     DB.enablePersistence({synchronizeTabs:true}).catch(()=>{});
-    AUTH.onAuthStateChanged(user=>{
+    AUTH.onAuthStateChanged(async user=>{
       if(user){
         CURRENT_USER=user;
-        showApp(user);
-        startSync();
+        IS_ADMIN = user.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();
+        IS_READ_ONLY = !IS_ADMIN;
+        if(IS_ADMIN){
+          showApp(user);
+          startSync();
+        } else {
+          // Investidor: carrega apenas projetos partilhados
+          showApp(user);
+          showReadOnlyBanner();
+          await loadSharedProjects(user.email);
+          setSyncStatus('ok');
+        }
       }else{
         CURRENT_USER=null;
+        IS_ADMIN=false;
+        IS_READ_ONLY=false;
         stopSync();
         showLoginScreen();
       }
@@ -677,11 +831,13 @@ function save(){
 }
 
 async function cloudSave(){
-  const ref=userDocRef();if(!ref)return;
+  const ref=userDocRef();if(!ref||IS_READ_ONLY)return;
   setSyncStatus('syncing');
   try{
     await ref.set({...ST,_updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     setSyncStatus('ok');
+    // Sincroniza projetos partilhados com investidores
+    syncSharedProjects().catch(()=>{});
   }catch(e){
     setSyncStatus('offline');
     console.warn('Cloud save failed',e);
@@ -1435,7 +1591,7 @@ function tabObras(p,a){
   <div class="card">
     <div class="card-head">
       <div class="card-title">Custos de Obra</div>
-      <button class="btn btn-primary btn-sm" onclick="openCostM('work')">＋ Custo</button>
+      ${IS_ADMIN?`<button class="btn btn-primary btn-sm" onclick="openCostM('work')">＋ Custo</button>`:''}
     </div>
     <div id="workList"></div>
   </div>`;
@@ -2138,7 +2294,7 @@ function renderInvPage(p,a){
   c.innerHTML=`
     <div class="section-header">
       <div class="section-title">Investidores</div>
-      <button class="btn btn-primary btn-sm" onclick="openInvM()">＋ Investidor</button>
+      ${IS_ADMIN?`<button class="btn btn-primary btn-sm" onclick="openInvM()">＋ Investidor</button>`:''}
     </div>
     ${p.investors.length?`<div class="card" style="margin-bottom:12px">
       <div class="card-title">Sumário</div>
@@ -2192,10 +2348,15 @@ function renderInvCards(p,a){
           <div class="inv-name">${esc(inv.name||'Sem nome')}</div>
           <div class="inv-role">${esc(inv.role||'—')} · Split lucro: ${pct(inv.profitSplitPct)}</div>
         </div>
-        <div style="display:flex;gap:5px">
-          <button class="btn btn-icon" onclick="openInvM('${inv.id}')">✏️</button>
-          <button class="btn btn-icon btn-danger" onclick="rmInv('${inv.id}')">🗑️</button>
-        </div>
+        ${(function(){
+        if(!IS_ADMIN)return '';
+        var b='<div style="display:flex;gap:4px">';
+        b+='<button class="btn btn-icon" onclick="openInvM(\''+inv.id+'\')" title="Editar">✏️</button>';
+        if(inv.email)b+='<button class="btn btn-icon" style="background:rgba(59,130,246,.15);color:#3b82f6" onclick="sendInvite(\''+inv.email+'\',\''+esc(p.name||'')+'\') " title="Enviar convite">📧</button>';
+        b+='<button class="btn btn-icon btn-danger" onclick="rmInv(\''+inv.id+'\')">🗑️</button>';
+        b+='</div>';
+        return b;
+      })()} </div>
       </div>
 
       <!-- KPIs financeiros -->
@@ -2426,6 +2587,7 @@ function openInvM(editId=null){
   q('mInvTitle').textContent=inv?'Editar Investidor':'Novo Investidor';
   q('fmInvestor').innerHTML=`
     ${fi('inv_name','Nome',inv?.name||'')}
+    ${fi('inv_email','Email (para convite)',inv?.email||'','email')}
     ${fs('inv_role','Função',ROLES,inv?.role||'Capital')}
     ${fi('inv_cap','Capital de entrada (€)',inv?.entryCapitalAmount||0,'number')}
     ${fi('inv_split','Profit split (%)',inv?.profitSplitPct||0,'number')}
@@ -2440,7 +2602,8 @@ function saveInvestor(){
     name:q('inv_name')?.value||'',role:q('inv_role')?.value||'Capital',
     entryCapitalAmount:Number(q('inv_cap')?.value||0),
     profitSplitPct:Number(q('inv_split')?.value||0),
-    taxRateEstimatedPct:Number(q('inv_tax')?.value||37),
+    email:(q('inv_email')?.value||'').toLowerCase().trim(),
+    taxRateEstimatedPct:Number(q('inv_tax')?.value||28),
     colorHex:q('inv_color')?.value||nextColor(p.investors.map(i=>i.colorHex))
   };
   if(editInvId)p.investors=p.investors.map(i=>i.id===editInvId?{...i,...inv}:i);
@@ -2538,14 +2701,42 @@ function exportPDF(){
     doc.line(M,y,W-M,y);y+=8;
 
     // ── HELPER: autoTable section ───────────────────────────────
-    const AT=(title,rows,cols=['Rubrica','Valor'])=>{
+    // Converte unicode PT para Latin-1 compativel com Helvetica no jsPDF
+    const T=function(s){
+      if(typeof s!=='string')return String(s||'');
+      return s
+        .replace(/à/g,'a').replace(/á/g,'a').replace(/â/g,'a').replace(/ã/g,'a').replace(/ä/g,'a')
+        .replace(/À/g,'A').replace(/Á/g,'A').replace(/Â/g,'A').replace(/Ã/g,'A').replace(/Ä/g,'A')
+        .replace(/ç/g,'c').replace(/Ç/g,'C')
+        .replace(/é/g,'e').replace(/ê/g,'e').replace(/è/g,'e')
+        .replace(/É/g,'E').replace(/Ê/g,'E').replace(/È/g,'E')
+        .replace(/í/g,'i').replace(/ì/g,'i').replace(/î/g,'i')
+        .replace(/Í/g,'I').replace(/Ì/g,'I').replace(/Î/g,'I')
+        .replace(/ó/g,'o').replace(/ò/g,'o').replace(/ô/g,'o').replace(/õ/g,'o')
+        .replace(/Ó/g,'O').replace(/Ò/g,'O').replace(/Ô/g,'O').replace(/Õ/g,'O')
+        .replace(/ú/g,'u').replace(/ù/g,'u').replace(/û/g,'u')
+        .replace(/Ú/g,'U').replace(/Ù/g,'U').replace(/Û/g,'U')
+        .replace(/ñ/g,'n').replace(/Ñ/g,'N')
+        .replace(/—/g,'-').replace(/–/g,'-').replace(/’/g,"'")
+        .replace(/²/g,'2').replace(/³/g,'3').replace(/°/g,' graus')
+        .replace(/[ -
+-- ]/g,'')
+        .replace(/[^ - ]/g,'?');
+    };
+    // Wrapper AT: sanitiza titulo e celulas
+    const AT=function(title,rows,cols){
+      if(!cols)cols=['Rubrica','Valor'];
       if(y>H-50){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
       doc.setFontSize(10.5);doc.setFont('helvetica','bold');doc.setTextColor(...TESSA_DARK);
-      doc.text(title,M,y);y+=5;
+      doc.text(T(title),M,y);y+=5;
+      const safeRows=rows.map(function(row){
+        return Array.isArray(row)?row.map(function(cell){return T(String(cell??''));}):row;
+      });
+      const safeCols=cols.map(function(c){return T(String(c));});
       doc.autoTable({
         startY:y,
-        head:[cols],
-        body:rows,
+        head:[safeCols],
+        body:safeRows,
         theme:'grid',
         styles:{fontSize:9,cellPadding:3.5,font:'helvetica',textColor:BLACK},
         headStyles:{fillColor:TESSA_DARK,textColor:WHITE,fontStyle:'bold',fontSize:9},
@@ -2563,7 +2754,7 @@ function exportPDF(){
         ['Aquisição All-In (inc. impostos)',eur(a.acqAll)],
         ['Total Obras',eur(a.wrkTotal)],
         ['Venda de referência',eur(a.saleRef)],
-        ['Venda líquida',eur(a.saleNet)],
+        ['Venda liquida',eur(a.saleNet)],
         ['Lucro bruto',eur(a.profit)],
         ['Imposto mais-valias (50%×28%)',eur(a.taxTotal)],
         ['Lucro líquido pós-imposto',eur(a.netProfit||0)],
@@ -2655,7 +2846,7 @@ function exportPDF(){
         ['Referência de venda',eur(a.saleRef)],
         ['Comissão mediação AMI',eur(a.ami)],
         ['Outros custos venda',eur(a.saleOth)],
-        ['Venda líquida',eur(a.saleNet)],
+        ['Venda liquida',eur(a.saleNet)],
         ['Capital total a reembolsar',eur(a.capTotal)],
         ['Lucro bruto (venda líq. − capital)',eur(a.profit)],
       ]);
@@ -2835,7 +3026,7 @@ function exportPDF(){
       // 15. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
         AT('15. Alertas e Validacoes',
-          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^ -]/g,'?')])
+          a.warns.map(function(w){return[w.t==='err'?'ERRO':'AVISO',String(w.m||'')];})
         ,['Tipo','Descricao']);
       }
     }
@@ -3020,6 +3211,8 @@ async function doLogout(){
 //  INIT
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
+  // Verifica se o URL e um link de convite Firebase
+  checkEmailSignInLink();
   // Orientation tracking
   function setOrient(){
     const land=window.innerWidth>window.innerHeight;
