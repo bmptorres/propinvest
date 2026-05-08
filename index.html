@@ -634,22 +634,139 @@ function blank(){
 // ─────────────────────────────────────────────────────────────
 //  FIREBASE — INIT & AUTH
 // ─────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════
-//  SISTEMA MULTI-UTILIZADOR — ADMIN + INVESTIDORES
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  SISTEMA MULTI-UTILIZADOR — ADMIN + INVESTIDORES (v2)
+//  Detecção automática: admin = quem tem dados próprios no Firestore
+//  Investidor = quem só tem projetos partilhados
+// ═══════════════════════════════════════════════════════════════
 
-// ── CONSTANTE ADMIN ─────────────────────────────────────────────
-// Altera para o teu email Firebase
-const ADMIN_EMAIL = 'bmptorres@gmail.com';
+// FLAGS GLOBAIS
+let IS_READ_ONLY = false;
+let IS_ADMIN     = false;
 
-// ── FLAGS GLOBAIS ────────────────────────────────────────────────
-let IS_READ_ONLY = false;   // true quando investidor está logado
-let IS_ADMIN     = false;   // true quando admin está logado
+// ── DETECÇÃO AUTOMÁTICA ADMIN/INVESTIDOR ─────────────────────────
+// Não usa email hardcoded — verifica se o utilizador tem dados próprios.
+// Qualquer utilizador que tenha um documento em users/{uid}/data/propinvest
+// é tratado como proprietário/admin desses dados.
+// Quem não tem dados próprios é investidor (só vê projetos partilhados).
+async function detectRoleAndLoad(user){
+  if(!DB){ showApp(user); startSync(); return; }
+
+  try{
+    // Verificar se tem dados próprios no Firestore
+    const ownRef = DB.collection('users').doc(user.uid)
+                     .collection('data').doc('propinvest');
+    const ownSnap = await ownRef.get();
+
+    if(ownSnap.exists){
+      // TEM dados próprios → é admin/proprietário
+      IS_ADMIN     = true;
+      IS_READ_ONLY = false;
+      showApp(user);
+      startSync();
+    } else {
+      // SEM dados próprios → verificar se tem projetos partilhados
+      const sharedSnap = await DB.collection('shared_projects')
+        .where('allowedEmails','array-contains', user.email.toLowerCase())
+        .get();
+
+      if(!sharedSnap.empty){
+        // É investidor com projetos
+        IS_ADMIN     = false;
+        IS_READ_ONLY = true;
+        showApp(user);
+        showReadOnlyBanner();
+        loadSharedFromSnap(sharedSnap);
+        setSyncStatus('ok');
+      } else {
+        // Novo utilizador — pode ser admin sem dados ainda
+        // Deixa entrar normalmente (primeira vez)
+        IS_ADMIN     = true;
+        IS_READ_ONLY = false;
+        showApp(user);
+        startSync();
+      }
+    }
+  }catch(e){
+    // Em caso de erro, deixa entrar (fail-open para o proprietário)
+    console.warn('detectRoleAndLoad error:', e);
+    IS_ADMIN     = true;
+    IS_READ_ONLY = false;
+    showApp(user);
+    startSync();
+  }
+}
+
+// ── CARREGAR PROJETOS PARTILHADOS (snapshot já resolvido) ────────
+function loadSharedFromSnap(snap){
+  const projects = [];
+  snap.forEach(doc=>{
+    const d = doc.data();
+    if(d && d.project) projects.push(d.project);
+  });
+  if(projects.length > 0){
+    ST = { projects, activeProjectId: projects[0].id };
+    localStorage.setItem(SK, JSON.stringify(ST));
+    renderAll();
+  } else {
+    showNoProjectsMessage();
+  }
+}
+
+async function loadSharedProjects(userEmail){
+  if(!DB) return;
+  try{
+    const snap = await DB.collection('shared_projects')
+      .where('allowedEmails','array-contains', userEmail.toLowerCase())
+      .get();
+    loadSharedFromSnap(snap);
+  }catch(e){
+    console.error('loadSharedProjects error:', e);
+    showToast('Erro a carregar projetos');
+  }
+}
+
+function showNoProjectsMessage(){
+  ST = { projects:[], activeProjectId:'' };
+  const dash = document.getElementById('dashContent');
+  if(dash) dash.innerHTML = `
+    <div class="empty" style="padding:60px 20px;text-align:center">
+      <div style="font-size:48px;margin-bottom:16px">📭</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:8px">
+        Sem projetos disponíveis
+      </div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">
+        Ainda não tens acesso a nenhum projeto.<br>
+        O administrador precisa de te adicionar como investidor.
+      </div>
+    </div>`;
+}
+
+// ── GUARDAR CÓPIA PARTILHADA (chamado pelo admin ao guardar) ─────
+async function syncSharedProjects(){
+  if(!DB || !IS_ADMIN || !CURRENT_USER) return;
+  for(const p of (ST.projects||[])){
+    const sharedEmails = (p.investors||[])
+      .filter(inv => inv.email && inv.email.includes('@'))
+      .map(inv => inv.email.toLowerCase());
+    if(sharedEmails.length === 0) continue;
+    try{
+      await DB.collection('shared_projects').doc(p.id).set({
+        project: p,
+        allowedEmails: sharedEmails,
+        ownerUid: CURRENT_USER.uid,
+        ownerEmail: CURRENT_USER.email,
+        _updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }catch(e){
+      console.warn('syncSharedProjects error:', p.name, e);
+    }
+  }
+}
 
 // ── ENVIAR CONVITE POR EMAIL ─────────────────────────────────────
 async function sendInvite(investorEmail, projectName){
-  if(!AUTH) return showToast('Firebase não disponível');
-  if(!investorEmail || !investorEmail.includes('@')){
+  if(!AUTH || !investorEmail || !investorEmail.includes('@')){
     return showToast('Email inválido');
   }
   const actionCodeSettings = {
@@ -658,91 +775,32 @@ async function sendInvite(investorEmail, projectName){
   };
   try{
     await AUTH.sendSignInLinkToEmail(investorEmail, actionCodeSettings);
-    // Guarda email localmente para confirmar depois
-    localStorage.setItem('inviteEmailSent', investorEmail);
-    showToast('✅ Convite enviado para '+investorEmail);
+    localStorage.setItem('pendingSignInEmail', investorEmail);
+    showToast('\u2705 Convite enviado para ' + investorEmail);
   }catch(e){
-    showToast('Erro ao enviar convite: '+e.message);
-    console.error(e);
+    console.error('sendInvite error:', e);
+    showToast('Erro ao enviar convite: ' + e.message);
   }
 }
 
-// ── VERIFICAR SE É LINK DE CONVITE ──────────────────────────────
+// ── VERIFICAR LINK DE CONVITE ────────────────────────────────────
 async function checkEmailSignInLink(){
   if(!AUTH) return;
-  if(!AUTH.isSignInWithEmailLink(window.location.href)) return;
-  // É um link de convite — pede email se não guardado
-  let email = localStorage.getItem('inviteEmailSent');
-  if(!email){
-    email = window.prompt('Confirma o teu email para completar o acesso:');
-  }
-  if(!email) return;
   try{
-    await AUTH.signInWithEmailLink(email, window.location.href);
-    localStorage.removeItem('inviteEmailSent');
-    // Limpa URL
-    window.history.replaceState({},'',window.location.pathname);
-    showToast('✅ Acesso confirmado! Bem-vindo.');
-  }catch(e){
-    showToast('Erro ao confirmar acesso: '+e.message);
-    console.error(e);
-  }
-}
-
-// ── CARREGAR PROJETOS PARTILHADOS (para investidores) ────────────
-async function loadSharedProjects(userEmail){
-  if(!DB) return;
-  try{
-    const snap = await DB.collection('shared_projects')
-      .where('allowedEmails','array-contains', userEmail.toLowerCase())
-      .get();
-    const projects = [];
-    snap.forEach(doc=>{
-      const d = doc.data();
-      if(d && d.project) projects.push(d.project);
-    });
-    if(projects.length > 0){
-      ST = { projects, activeProjectId: projects[0].id };
-      localStorage.setItem(SK, JSON.stringify(ST));
-      renderAll();
-    } else {
-      // Sem projetos partilhados ainda
-      ST = { projects:[], activeProjectId:'' };
-      const c = document.getElementById('dashContent');
-      if(c) c.innerHTML = `
-        <div class="empty" style="padding:60px 20px;text-align:center">
-          <div style="font-size:48px;margin-bottom:16px">📭</div>
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:8px">Sem projetos disponíveis</div>
-          <div style="font-size:13px;color:var(--text2);line-height:1.6">
-            Ainda não tens acesso a nenhum projeto.<br>
-            Aguarda que o administrador te adicione como investidor.
-          </div>
-        </div>`;
+    if(!AUTH.isSignInWithEmailLink(window.location.href)) return;
+    let email = localStorage.getItem('pendingSignInEmail');
+    if(!email){
+      email = window.prompt('Confirma o teu email para completar o acesso:');
     }
+    if(!email) return;
+    await AUTH.signInWithEmailLink(email, window.location.href);
+    localStorage.removeItem('pendingSignInEmail');
+    window.history.replaceState({},'',window.location.pathname);
+    showToast('\u2705 Acesso confirmado! Bem-vindo.');
   }catch(e){
-    console.error('Erro ao carregar projetos partilhados:', e);
-    showToast('Erro a carregar projetos');
-  }
-}
-
-// ── GUARDAR CÓPIA PARTILHADA (chamado pelo admin ao guardar) ─────
-async function syncSharedProjects(){
-  if(!DB || !IS_ADMIN) return;
-  // Para cada projeto que tem emails partilhados, actualiza shared_projects
-  for(const p of ST.projects){
-    const sharedEmails = (p.investors||[])
-      .filter(inv=>inv.email && inv.email.includes('@'))
-      .map(inv=>inv.email.toLowerCase());
-    if(sharedEmails.length === 0) continue;
-    try{
-      await DB.collection('shared_projects').doc(p.id).set({
-        project: p,
-        allowedEmails: sharedEmails,
-        ownerEmail: CURRENT_USER.email,
-        _updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }catch(e){
-      console.warn('Erro ao sincronizar projeto partilhado:', p.name, e);
+    // Ignora erros silenciosamente (URL pode não ser link de convite)
+    if(e.code !== 'auth/invalid-action-code'){
+      console.warn('checkEmailSignInLink:', e.message);
     }
   }
 }
@@ -760,19 +818,20 @@ function showReadOnlyBanner(){
     'font-size:12px;font-family:"DM Sans",sans-serif',
     'box-shadow:0 2px 12px rgba(0,0,0,.3)'
   ].join(';');
-  b.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:16px">👁️</span>
-      <div>
-        <strong style="font-size:13px">Modo Leitura</strong>
-        <span style="color:rgba(255,255,255,.75);margin-left:6px">Tens acesso apenas de consulta aos projetos onde és investidor</span>
-      </div>
-    </div>
-    <button onclick="AUTH.signOut()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Sair</button>
-  `;
+  b.innerHTML = [
+    '<div style="display:flex;align-items:center;gap:8px">',
+    '<span style="font-size:16px">\uD83D\uDC41\uFE0F</span>',
+    '<div>',
+    '<strong style="font-size:13px">Modo Leitura</strong>',
+    '<span style="color:rgba(255,255,255,.75);margin-left:6px">',
+    'Tens acesso de consulta aos projetos onde \xe9s investidor',
+    '</span></div></div>',
+    '<button onclick="AUTH.signOut()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Sair</button>'
+  ].join('');
   document.body.prepend(b);
-  // Ajusta padding do conteúdo
-  document.querySelector('.app-shell').style.paddingTop = '42px';
+  // Ajusta padding
+  const shell = document.querySelector('.app-shell');
+  if(shell) shell.style.paddingTop = '42px';
 }
 
 
@@ -785,21 +844,11 @@ function initFirebase(){
     AUTH=firebase.auth();
     DB=firebase.firestore();
     DB.enablePersistence({synchronizeTabs:true}).catch(()=>{});
-    AUTH.onAuthStateChanged(async user=>{
+    AUTH.onAuthStateChanged(user=>{
       if(user){
         CURRENT_USER=user;
-        IS_ADMIN = user.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();
-        IS_READ_ONLY = !IS_ADMIN;
-        if(IS_ADMIN){
-          showApp(user);
-          startSync();
-        } else {
-          // Investidor: carrega apenas projetos partilhados
-          showApp(user);
-          showReadOnlyBanner();
-          await loadSharedProjects(user.email);
-          setSyncStatus('ok');
-        }
+        // Detecta automaticamente se e admin ou investidor
+        detectRoleAndLoad(user);
       }else{
         CURRENT_USER=null;
         IS_ADMIN=false;
