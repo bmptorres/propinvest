@@ -910,7 +910,7 @@ function analyze(p){
   if(p.investors.length&&Math.abs(splitSum-100)>.01)warns.push({t:'err',m:`Profit split soma ${pct(splitSum)} — deve ser 100%.`});
   if(saleRef<=0)warns.push({t:'warn',m:'Preço de venda não definido.'});
   if(profit<0&&saleRef>0)warns.push({t:'err',m:'Venda líquida não cobre o capital investido!'});
-  if(!mkt)warns.push({t:'warn',m:'Preenche €/m², área e comparáveis para estimativa de mercado.'});
+  // Mercado tab removida - alerta suprimido
   if(manualTax)warns.push({t:'warn',m:'Override manual de imposto ativo.'});
   
   // BTL ENGINE
@@ -1353,7 +1353,7 @@ function renderDetail(){
   const c=q('detailContent');
   if(curSub==='projeto')c.innerHTML=tabProjeto(p);
   else if(curSub==='aquisicao')c.innerHTML=tabAquisicao(p,a);
-  else if(curSub==='obras')c.innerHTML=tabObras(p);
+  else if(curSub==='obras')c.innerHTML=tabObras(p,a);
   else if(curSub==='venda')c.innerHTML=tabVenda(p,a);
   else if(curSub==='fiscal')c.innerHTML=tabFiscal(p,a);
   else if(curSub==='financiamento'){c.innerHTML=tabFinanciamento(p,a);bindFinanciamento(p);}
@@ -1377,10 +1377,9 @@ function tabProjeto(p){
       ${fi('pf_buy_date','Data de compra',p.purchaseDate,'date')}
       ${fi('pf_exit_date','Saída prevista',p.targetExitDate,'date')}
       ${fi('pf_price','Preço de compra (€)',p.purchasePrice,'number')}
-      ${fi('pf_vpt','VPT (€)',p.vpt,'number')}
+      <div class="fgrp"><label class="flabel">VPT — Valor Patrimonial Tributário (€)<span style="font-size:9px;font-weight:400;color:var(--muted);display:block;margin-top:1px">Valor nas Finanças. Usado para IMI e validação fiscal.</span></label><input class="finput" id="pf_vpt" type="number" value="${esc(String(p.vpt??''))}" /></div>
       ${fi('pf_esale','Venda esperada (€)',p.expectedSalePrice,'number')}
-      ${fi('pf_asale','Venda real (€)',p.actualSalePrice,'number')}
-      ${fi('pf_rent','Renda mensal esperada (€)',p.expectedMonthlyRent,'number')}
+      ${p.strategy==='Buy to Let'||p.strategy==='BRRR'||p.strategy==='Mista'?fi('pf_rent','Renda mensal esperada (€)',p.expectedMonthlyRent,'number'):''}
       <div class="fgrp f-full"><label class="flabel">Notas</label><textarea class="ftarea" id="pf_notes">${esc(p.notes)}</textarea></div>
     </div>
   </div>`;
@@ -1424,8 +1423,16 @@ function tabAquisicao(p,a){
     <div id="adminList"></div>
   </div>`;
 }
-function tabObras(p){
-  return`<div class="card">
+function tabObras(p,a){
+  return`
+  ${a&&a.wrkTotal>0?`<div class="card" style="margin-bottom:10px">
+    <div class="card-head"><div class="card-title">🔨 Resumo de Obras</div><span class="auto-badge">🔒 Auto</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+      <span style="font-size:13px;color:var(--text2)">${p.workCosts.length} registo${p.workCosts.length!==1?'s':''}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--blue)">${eur(a.wrkTotal)}</span>
+    </div>
+  </div>`:''}
+  <div class="card">
     <div class="card-head">
       <div class="card-title">Custos de Obra</div>
       <button class="btn btn-primary btn-sm" onclick="openCostM('work')">＋ Custo</button>
@@ -1437,7 +1444,7 @@ function tabVenda(p,a){
   return`<div class="card">
     <div class="card-title">Venda e Saída</div>
     <div class="form-grid">
-      ${fi('sl_esale','Venda esperada (€)',p.expectedSalePrice,'number')}
+      <div class="fgrp"><label class="flabel">Venda Esperada (€)<span style="font-size:9px;font-weight:400;color:var(--blue);display:block;margin-top:1px">🔗 Também editável em Dados Gerais</span></label><input class="finput" id="sl_esale" type="number" value="${esc(String(p.expectedSalePrice??''))}" /></div>
       ${fi('sl_asale','Venda real (€)',p.actualSalePrice,'number')}
       ${fi('sl_date','Data de venda',p.saleDate,'date')}
       ${fi('sl_ami','Comissão AMI (%)',p.saleConfig.brokerCommissionPct,'number')}
@@ -1445,7 +1452,7 @@ function tabVenda(p,a){
     </div>
   </div>
   <div class="card">
-    <div class="card-title">Apuramento de Saída</div>
+    <div class="card-head"><div class="card-title">Apuramento de Saída</div><span class="auto-badge">🔒 Auto</span></div>
     ${mt('Referência de venda',eur(a?a.saleRef:0))}
     ${mt('Comissão AMI',eur(a?a.ami:0),'c-r')}
     ${mt('Outros custos de venda',eur(a?a.saleOth:0),'c-r')}
@@ -1475,7 +1482,7 @@ function tabFiscal(p,a){
     </div>
   </div>
   <div class="card">
-    <div class="card-title">Apuramento Fiscal</div>
+    <div class="card-head"><div class="card-title">Apuramento Fiscal</div><span class="auto-badge">🔒 Auto</span></div>
     <div style="background:var(--surface);border-radius:11px;padding:11px 13px;margin-bottom:12px;font-size:12px;color:var(--text2)">
       <strong style="color:var(--text)">F\u00f3rmula activa:</strong>
       Lucro (${a?eur(a.profit):'\u20ac0'}) \u00d7 ${inc}% \u00d7 28% = <strong style="color:var(--accent)">${a?eur(a.taxTotal):'\u20ac0'}</strong>
