@@ -2569,12 +2569,52 @@ function sendInvestorInvite(id){
   inv.inviteStatus='sent';inv.invitedAt=new Date().toISOString();setP(p);
   syncSharedProjects([p]).catch(e=>console.warn('Share sync failed',e));
   const url=inviteUrlFor(p,inv.email);
-  const subject=encodeURIComponent(`Convite PropInvest - ${p.name||'Projeto'}`);
-  const body=encodeURIComponent(`Ola ${inv.name||''},\n\nFoste convidado a consultar o projeto "${p.name||'Projeto'}" no PropInvest.\n\nAbre este link, cria conta com este email (${inv.email}) e define a tua password:\n${url}\n\nO acesso e apenas de visualizacao.`);
-  try{navigator.clipboard?.writeText(url);}catch(e){}
-  window.location.href=`mailto:${encodeURIComponent(inv.email)}?subject=${subject}&body=${body}`;
-  showToast('Convite preparado e link copiado.');
+  showInviteModal(p,inv,url);
 }
+
+function showInviteModal(p,inv,url){
+  document.getElementById('inviteModal')?.remove();
+  const subject=encodeURIComponent(`Convite PropInvest - ${p.name||'Projeto'}`);
+  const rawBody=`Ola ${inv.name||''},
+
+Foste convidado a consultar o projeto "${p.name||'Projeto'}" no PropInvest.
+
+Abre este link, cria conta com este email (${inv.email}) e define a tua password:
+${url}
+
+O acesso e apenas de visualizacao.`;
+  const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${subject}&body=${encodeURIComponent(rawBody)}`;
+  const ov=document.createElement('div');
+  ov.className='ai-modal-overlay';
+  ov.id='inviteModal';
+  ov.innerHTML=`<div class="ai-modal" style="max-height:62dvh">
+    <div class="ai-modal-header">
+      <div class="ai-modal-title">Convite do investidor</div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inviteModal')?.remove()" style="font-size:18px;padding:4px 8px">x</button>
+    </div>
+    <div class="ai-modal-body">
+      <div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. O investidor deve criar conta com este mesmo email.</span></div>
+      <div class="fgrp" style="margin-top:12px">
+        <label class="flabel">Link de convite</label>
+        <textarea class="ftarea" id="inviteLink" readonly style="min-height:92px;font-family:monospace;font-size:12px">${esc(url)}</textarea>
+      </div>
+      <div class="m-actions" style="margin-top:14px">
+        <button class="btn btn-primary" onclick="copyInviteLink()">Copiar link</button>
+        <button class="btn btn-secondary" onclick="window.location.href='${mailto.replace(/'/g,'%27')}'">Abrir email</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  copyText(url);
+  showToast('Convite criado e link copiado.');
+}
+
+function copyText(txt){
+  if(navigator.clipboard&&location.protocol!=='file:')return navigator.clipboard.writeText(txt).catch(()=>{});
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}ta.remove();
+}
+function copyInviteLink(){const el=q('inviteLink');if(!el)return;copyText(el.value);showToast('Link copiado.');}
 
 //  PDF EXPORT — TESSA ADVISORS
 // ─────────────────────────────────────────────────────────────
