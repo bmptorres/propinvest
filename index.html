@@ -442,7 +442,7 @@
   </div>
 </div>
 
-<div id="app">
+<div id="app" style="display:none">
   <div class="sync-badge" id="syncBadge" style="display:none"><span id="syncDot">●</span><span id="syncLabel">✓</span></div>
   <div class="topbar">
     <div class="logo">
@@ -3009,38 +3009,32 @@ function clearLoginMsg(){
 }
 
 async function doEmailLogin(){
-  // Garante que Firebase está pronto
-  if(!AUTH){
-    alert('A aplicação ainda está a carregar. Aguarda 3 segundos e tenta novamente.');
-    return;
-  }
+  // DIAGNOSTICO: confirma que a funcao foi chamada
   const email = (q('liEmail')?.value||'').trim();
   const pass  =  q('liPass')?.value||'';
-  if(!email||!pass){
-    setLoginErr('Preenche o email e a password.');
+  
+  if(!AUTH){
+    alert('PROBLEMA: Firebase nao inicializou. AUTH e null.\nVerifica a consola do browser (F12).');
     return;
   }
+  if(!email||!pass){
+    alert('Preenche email e password.');
+    return;
+  }
+  
   const btn=q('btnLogin');
   if(btn){btn.disabled=true;btn.textContent='A entrar...';}
-  setLoginErr('');
+  
   try{
     await AUTH.signInWithEmailAndPassword(email,pass);
-    // Sucesso — onAuthStateChanged trata do resto
+    // Se chegou aqui, o login correu bem
+    // onAuthStateChanged vai tratar do resto
   }catch(e){
     if(btn){btn.disabled=false;btn.textContent='Entrar';}
-    const msgs={
-      'auth/user-not-found':    'Email não encontrado.',
-      'auth/wrong-password':    'Password incorrecta.',
-      'auth/invalid-email':     'Email inválido.',
-      'auth/invalid-credential':'Email ou password incorrectos.',
-      'auth/too-many-requests': 'Demasiadas tentativas. Aguarda.',
-      'auth/user-disabled':     'Conta desactivada.',
-      'auth/operation-not-allowed':'Login por email não está activado no Firebase.',
-      'auth/network-request-failed':'Sem ligação à internet.',
-    };
-    const msg=msgs[e.code]||('Erro ('+e.code+'): '+e.message);
-    setLoginErr(msg);
-    console.error('Login error:',e.code,e.message);
+    // Mostra o erro exacto via alert para garantir que es visto
+    alert('Erro de login:\n' + e.code + '\n' + e.message);
+    setLoginErr('Erro: ' + e.message);
+    console.error('Login error:', e.code, e.message);
   }
 }
 
