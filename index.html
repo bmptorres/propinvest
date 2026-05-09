@@ -4,13 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#09090f" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>PropInvest Pro</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
@@ -220,11 +219,9 @@
     .val-row .vv{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(14px,4vw,20px);text-align:right;word-break:break-all;}
     /* Range slider styling */
     input[type=range]{height:6px;border-radius:3px;outline:none;border:none;background:var(--border2);cursor:pointer;}
-    @media(min-width:600px){
-      .offer-grid{grid-template-columns:1fr 1fr 1fr !important;}
-    }
     /* ── BREAKPOINTS ───────────────────────────────────────── */
     @media(min-width:600px){
+      .offer-grid{grid-template-columns:1fr 1fr 1fr !important;}
       .form-grid{grid-template-columns:1fr 1fr;}
       .kpi-grid{grid-template-columns:1fr 1fr;}
     }
@@ -440,7 +437,7 @@
   </div>
 </div>
 
-<div id="app">
+<div id="app" style="display:none">
   <div class="sync-badge" id="syncBadge" style="display:none"><span id="syncDot">●</span><span id="syncLabel">✓</span></div>
   <div class="topbar">
     <div class="logo">
@@ -2537,15 +2534,31 @@ function exportPDF(){
     doc.setDrawColor(220,225,230);doc.setLineWidth(0.3);
     doc.line(M,y,W-M,y);y+=8;
 
+    // ── HELPER: sanitiza texto para Helvetica (sem suporte Unicode) ─
+    const T=s=>{
+      if(typeof s!=='string')return String(s||'');
+      return s
+        .replace(/à|á|â|ã|ä/g,'a').replace(/À|Á|Â|Ã|Ä/g,'A')
+        .replace(/ç/g,'c').replace(/Ç/g,'C')
+        .replace(/é|ê|è/g,'e').replace(/É|Ê|È/g,'E')
+        .replace(/í|ì|î/g,'i').replace(/Í|Ì|Î/g,'I')
+        .replace(/ó|ò|ô|õ/g,'o').replace(/Ó|Ò|Ô|Õ/g,'O')
+        .replace(/ú|ù|û/g,'u').replace(/Ú|Ù|Û/g,'U')
+        .replace(/ñ/g,'n').replace(/Ñ/g,'N')
+        .replace(/—|–/g,'-').replace(/’/g,"'")
+        .replace(/[^ -ÿ]/g,'?');
+    };
     // ── HELPER: autoTable section ───────────────────────────────
     const AT=(title,rows,cols=['Rubrica','Valor'])=>{
       if(y>H-50){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
       doc.setFontSize(10.5);doc.setFont('helvetica','bold');doc.setTextColor(...TESSA_DARK);
-      doc.text(title,M,y);y+=5;
+      doc.text(T(title),M,y);y+=5;
+      const safeRows=rows.map(r=>Array.isArray(r)?r.map(c=>T(String(c??''))):r);
+      const safeCols=cols.map(c=>T(String(c)));
       doc.autoTable({
         startY:y,
-        head:[cols],
-        body:rows,
+        head:[safeCols],
+        body:safeRows,
         theme:'grid',
         styles:{fontSize:9,cellPadding:3.5,font:'helvetica',textColor:BLACK},
         headStyles:{fillColor:TESSA_DARK,textColor:WHITE,fontStyle:'bold',fontSize:9},
@@ -3033,11 +3046,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.nav-btn').forEach(btn=>btn.onclick=()=>nav(btn.dataset.page));
   // Sub tabs
   document.querySelectorAll('.sub-tab').forEach(btn=>btn.onclick=()=>setSub(btn.dataset.sub));
-  // Button bindings
-  q('btnNew').onclick=openNewProject;
-  q('btnCreateProject').onclick=createProject;
-  q('btnSaveInvestor').onclick=saveInvestor;
-  q('btnSaveCost').onclick=saveCost;
+  // Button bindings — com null check para não crashar se DOM mudar
+  const _bN=q('btnNew');           if(_bN) _bN.onclick=openNewProject;
+  const _bC=q('btnCreateProject'); if(_bC) _bC.onclick=createProject;
+  const _bI=q('btnSaveInvestor');  if(_bI) _bI.onclick=saveInvestor;
+  const _bS=q('btnSaveCost');      if(_bS) _bS.onclick=saveCost;
   // Close on overlay click
   document.querySelectorAll('.modal-ov').forEach(ov=>{
     ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
@@ -3077,27 +3090,8 @@ function deleteActiveProject(){
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  SPRINT C1 — ASSISTENTE DE ANÁLISE COM IA (Claude + Web Search)
+//  IA — ANÁLISE DE MERCADO & API KEY
 // ═══════════════════════════════════════════════════════════════
-
-
-// ═══════════════════════════════════════════════════════════════
-//  SPRINT C — CONFIGURAÇÃO API KEY
-// ═══════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════
-//  SPRINT C1 — ASSISTENTE IA (via Claude.ai — sem proxy, sem custo)
-// ═══════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════
-//  SPRINT C — CONFIGURAÇÃO API KEY (guardada localmente)
-// ═══════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════
-// SPRINT C — API KEY + PROXY CONFIG
-// ═══════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════
-//  SPRINT C — ANÁLISE DE MERCADO COM IA
-//  Reescrito do zero — clean, lean, eficiente
-// ═══════════════════════════════════════════════════════════════════
 
 // ── API Key & Proxy ─────────────────────────────────────────────
 function getApiKey(){return localStorage.getItem('tessa_k')||'';}
