@@ -533,6 +533,20 @@
   </div>
 </div>
 
+
+<!-- MODAL: Acesso ao Projeto -->
+<div class="modal-ov" id="mAccess">
+  <div class="modal-sheet">
+    <div class="m-handle"></div>
+    <div class="m-title">Dar acesso ao projeto</div>
+    <div class="form-grid" id="fmAccess"></div>
+    <div class="m-actions">
+      <button class="btn btn-secondary" onclick="closeM('mAccess')">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveAccess">Guardar acesso</button>
+    </div>
+  </div>
+</div>
+
   <!-- TESSA ADVISORS footer branding -->
   <div class="tessa-footer">
     <span class="tessa-footer-label">Property of</span>
@@ -629,9 +643,43 @@ function blank(){
 }
 
 // ─────────────────────────────────────────────────────────────
-//  FIREBASE — INIT & AUTH
+//  FIREBASE — INIT, AUTH & PARTILHA MULTIUTILIZADOR
 // ─────────────────────────────────────────────────────────────
-let FB=null,DB=null,AUTH=null,CURRENT_USER=null,SYNC_UNSUB=null;
+let FB=null,DB=null,AUTH=null,CURRENT_USER=null;
+let ACCESS_UNSUB=null,MEMBERS_UNSUB=null,MEMBERS_PROJECT_ID='';
+let PROJECT_UNSUBS={};
+let PROJECT_SAVE_TIMERS={};
+let USER_PROFILE=null;
+let USER_ACCESS={};
+let PROJECT_MEMBERS=[];
+const ACCESS_ROLES=[['owner','Owner'],['editor','Editor'],['viewer','Viewer']];
+
+function normalizeEmail(v){return String(v||'').trim().toLowerCase();}
+function projectRef(projectId){return DB.collection('projects').doc(projectId);}
+function userProfileRef(uid=CURRENT_USER?.uid){return DB.collection('users').doc(uid);}
+function userAccessRef(uid=CURRENT_USER?.uid){return DB.collection('users').doc(uid).collection('project_access');}
+function userLookupRef(emailLower){return DB.collection('user_lookup').doc(emailLower);}
+function myAccessRole(projectId=ST.activeProjectId){return USER_ACCESS?.[projectId]?.role||AP()?._accessRole||'viewer';}
+function canEditProject(p=AP()){if(!p)return false;const role=p._accessRole||myAccessRole(p.id);return role==='owner'||role==='editor';}
+function canManageAccess(p=AP()){if(!p)return false;const role=p._accessRole||myAccessRole(p.id);return role==='owner';}
+function roleLabel(role){return ({owner:'Owner',editor:'Editor',viewer:'Viewer'})[role]||role||'Viewer';}
+function syncRolePill(role){const map={owner:'fin',editor:'neu',viewer:'pos'};return `<span class="pill ${map[role]||'neu'}">${esc(roleLabel(role))}</span>`;}
+
+function save(){
+  try{localStorage.setItem(SK,JSON.stringify(ST));}catch{}
+}
+function upsertLocalProject(p){
+  const idx=ST.projects.findIndex(x=>x.id===p.id);
+  if(idx>=0)ST.projects[idx]=p; else ST.projects.push(p);
+  if(!ST.activeProjectId)ST.activeProjectId=p.id;
+  save();
+}
+function removeLocalProject(projectId){
+  ST.projects=ST.projects.filter(p=>p.id!==projectId);
+  if(ST.activeProjectId===projectId)ST.activeProjectId=ST.projects[0]?.id||'';
+  save();
+}
+function nextColor(used){return ICOLORS.find(c=>!used.includes(c))||ICOLORS[used.length%ICOLORS.length];}
 
 function initFirebase(){
   try{
@@ -640,13 +688,16 @@ function initFirebase(){
     AUTH=firebase.auth();
     DB=firebase.firestore();
     DB.enablePersistence({synchronizeTabs:true}).catch(()=>{});
-    AUTH.onAuthStateChanged(user=>{
+    AUTH.onAuthStateChanged(async user=>{
       if(user){
         CURRENT_USER=user;
         showApp(user);
-        startSync();
+        await startSync();
       }else{
         CURRENT_USER=null;
+        USER_PROFILE=null;
+        USER_ACCESS={};
+        PROJECT_MEMBERS=[];
         stopSync();
         showLoginScreen();
       }
@@ -658,72 +709,150 @@ function initFirebase(){
   }
 }
 
-function userDocRef(){
-  if(!DB||!CURRENT_USER)return null;
-  return DB.collection('users').doc(CURRENT_USER.uid).collection('data').doc('propinvest');
+async function ensureUserProfile(user=CURRENT_USER){
+  if(!DB||!user)return null;
+  const email=user.email||'';
+  const emailLower=normalizeEmail(email);
+  const displayName=user.displayName||email.split('@')[0]||'Utilizador';
+  const base={
+    uid:user.uid,
+    email,
+    emailLower,
+    displayName,
+    lastLoginAt:firebase.firestore.FieldValue.serverTimestamp()
+  };
+  await userProfileRef(user.uid).set({...base,createdAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  if(emailLower){
+    await userLookupRef(emailLower).set({uid:user.uid,email,emailLower,displayName},{merge:true});
+  }
+  USER_PROFILE={uid:user.uid,email,emailLower,displayName};
+  return USER_PROFILE;
 }
 
-// ── CLOUD SAVE ──────────────────────────────────────────────
-let saveTimer=null;
-function save(){
-  // Always cache locally first
-  localStorage.setItem(SK,JSON.stringify(ST));
-  // Debounce cloud save (300ms)
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(()=>cloudSave(),800);
+function sanitizeProjectForCloud(p){
+  const clean=JSON.parse(JSON.stringify(p));
+  delete clean._accessRole;
+  delete clean._membersPreview;
+  clean.ownerUid=clean.ownerUid||CURRENT_USER?.uid||'';
+  clean.updatedAt=firebase.firestore.FieldValue.serverTimestamp();
+  clean.updatedByUid=CURRENT_USER?.uid||'';
+  if(!clean.createdByUid)clean.createdByUid=CURRENT_USER?.uid||'';
+  if(!clean.createdAt)clean.createdAt=firebase.firestore.FieldValue.serverTimestamp();
+  return clean;
 }
 
-async function cloudSave(){
-  const ref=userDocRef();if(!ref)return;
+function scheduleProjectSave(p){
+  if(!DB||!CURRENT_USER)return;
+  clearTimeout(PROJECT_SAVE_TIMERS[p.id]);
+  PROJECT_SAVE_TIMERS[p.id]=setTimeout(()=>cloudSaveProject(p),700);
+}
+
+async function cloudSaveProject(p){
+  if(!DB||!CURRENT_USER)return;
+  if(!canEditProject(p)){showToast('Acesso apenas de leitura');return;}
   setSyncStatus('syncing');
   try{
-    await ref.set({...ST,_updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await projectRef(p.id).set(sanitizeProjectForCloud(p),{merge:true});
     setSyncStatus('ok');
   }catch(e){
     setSyncStatus('offline');
-    console.warn('Cloud save failed',e);
+    console.warn('Project save failed',e);
+    showToast('Erro ao guardar na cloud');
   }
 }
 
-// ── CLOUD LOAD + REAL-TIME SYNC ─────────────────────────────
-function startSync(){
+async function startSync(){
   stopSync();
-  const ref=userDocRef();if(!ref)return;
+  if(!DB||!CURRENT_USER)return;
   setSyncStatus('syncing');
-  SYNC_UNSUB=ref.onSnapshot(snap=>{
-    if(snap.exists){
-      const data=snap.data();
-      delete data._updatedAt;
-      ST=migrate(data);
-      localStorage.setItem(SK,JSON.stringify(ST));
-    }else{
-      // New user — try migrate from localStorage
-      const raw=JSON.parse(localStorage.getItem(SK)||'{}');
-      ST=migrate(raw);
-      cloudSave();
-    }
-    setSyncStatus('ok');
-    // Re-render current page
-    // Guard: skip if user is actively editing a form field (prevents keyboard dismiss on mobile)
-    if(!window._appEditing){
-      const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
-      renderPage(activePage);
+  await ensureUserProfile(CURRENT_USER);
+  ACCESS_UNSUB=userAccessRef().onSnapshot(snap=>{
+    const nextAccess={};
+    const ids=[];
+    snap.forEach(doc=>{
+      nextAccess[doc.id]={projectId:doc.id,...doc.data()};
+      ids.push(doc.id);
+    });
+    USER_ACCESS=nextAccess;
+    syncProjectSubscriptions(ids);
+    if(!ids.length){
+      ST.projects=[];
+      ST.activeProjectId='';
+      PROJECT_MEMBERS=[];
+      save();
+      if(!window._appEditing){
+        const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
+        renderPage(activePage);
+      }
+      setSyncStatus('ok');
     }
   },err=>{
     setSyncStatus('offline');
-    console.warn('Sync error',err);
+    console.warn('Access sync error',err);
   });
 }
 
-function stopSync(){
-  if(SYNC_UNSUB){SYNC_UNSUB();SYNC_UNSUB=null;}
+function syncProjectSubscriptions(projectIds){
+  Object.keys(PROJECT_UNSUBS).forEach(projectId=>{
+    if(!projectIds.includes(projectId)){
+      try{PROJECT_UNSUBS[projectId]();}catch{}
+      delete PROJECT_UNSUBS[projectId];
+      removeLocalProject(projectId);
+    }
+  });
+
+  projectIds.forEach(projectId=>{
+    if(PROJECT_UNSUBS[projectId])return;
+    PROJECT_UNSUBS[projectId]=projectRef(projectId).onSnapshot(doc=>{
+      if(!doc.exists){
+        removeLocalProject(projectId);
+        return;
+      }
+      const access=USER_ACCESS[projectId]||{};
+      const proj=migrateP({id:doc.id,...doc.data(),_accessRole:access.role||'viewer'});
+      proj._accessRole=access.role||'viewer';
+      upsertLocalProject(proj);
+      if(!ST.activeProjectId||!ST.projects.some(x=>x.id===ST.activeProjectId))ST.activeProjectId=proj.id;
+      if(MEMBERS_PROJECT_ID!==ST.activeProjectId)syncMembersSubscription(ST.activeProjectId);
+      setSyncStatus('ok');
+      if(!window._appEditing){
+        const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
+        renderPage(activePage);
+      }
+    },err=>{
+      setSyncStatus('offline');
+      console.warn('Project sync error',projectId,err);
+    });
+  });
+
+  save();
 }
 
-// ── LOCAL FALLBACK LOAD ─────────────────────────────────────
+function syncMembersSubscription(projectId=ST.activeProjectId){
+  if(MEMBERS_UNSUB){try{MEMBERS_UNSUB();}catch{} MEMBERS_UNSUB=null;}
+  MEMBERS_PROJECT_ID=projectId||'';
+  PROJECT_MEMBERS=[];
+  if(!DB||!CURRENT_USER||!projectId)return;
+  MEMBERS_UNSUB=projectRef(projectId).collection('members').onSnapshot(snap=>{
+    PROJECT_MEMBERS=snap.docs.map(doc=>({id:doc.id,...doc.data()})).sort((a,b)=>String(a.displayName||a.email||'').localeCompare(String(b.displayName||b.email||''),'pt'));
+    if(!window._appEditing){
+      const activePage=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
+      if(activePage==='investors')renderInvPage(AP(),analyze(AP()));
+    }
+  },err=>console.warn('Member sync error',err));
+}
+
+function stopSync(){
+  if(ACCESS_UNSUB){try{ACCESS_UNSUB();}catch{} ACCESS_UNSUB=null;}
+  if(MEMBERS_UNSUB){try{MEMBERS_UNSUB();}catch{} MEMBERS_UNSUB=null;}
+  Object.keys(PROJECT_UNSUBS).forEach(projectId=>{try{PROJECT_UNSUBS[projectId]();}catch{}});
+  PROJECT_UNSUBS={};
+  MEMBERS_PROJECT_ID='';
+}
+
 function load(){
   try{
-    let raw=JSON.parse(localStorage.getItem(SK)||'{}');
-    if(!raw.projects){const old=JSON.parse(localStorage.getItem('casa_invest_cockpit_v2')||'{}');if(old.projects)raw=old;}
+    const raw=JSON.parse(localStorage.getItem(SK)||'{}');
     ST=migrate(raw);
   }catch{ST={projects:[],activeProjectId:''};}
 }
@@ -734,7 +863,6 @@ function setSyncStatus(status){
   const l=document.getElementById('syncLabel');
   if(!b||!l)return;
   if(status==='ok'){
-    // Show briefly then hide
     b.style.display='inline-flex';
     b.className='sync-badge';
     l.textContent='✓';
@@ -753,8 +881,13 @@ function setSyncStatus(status){
   }
 }
 function AP(){return ST.projects.find(p=>p.id===ST.activeProjectId)||null;}
-function setP(p){ST.projects=ST.projects.map(x=>x.id===p.id?p:x);save();}
-function nextColor(used){return ICOLORS.find(c=>!used.includes(c))||ICOLORS[used.length%ICOLORS.length];}
+function setP(p){
+  if(!p)return;
+  if(!canEditProject(p)){showToast('Este projeto está em modo leitura');return;}
+  ST.projects=ST.projects.map(x=>x.id===p.id?{...p,_accessRole:p._accessRole||myAccessRole(p.id)}:x);
+  save();
+  scheduleProjectSave(p);
+}
 
 function migrate(raw){
   const base=raw&&typeof raw==='object'?raw:{projects:[],activeProjectId:''};
@@ -964,6 +1097,7 @@ function setSub(sub){
 }
 function renderPage(page){
   const p=AP(),a=analyze(p);
+  if(p&&MEMBERS_PROJECT_ID!==p.id)syncMembersSubscription(p.id);
   if(page==='portfolio')renderPortfolio();
   else if(page==='dashboard')renderDash(p,a);
   else if(page==='detail')renderDetailPage(p,a);
@@ -971,6 +1105,20 @@ function renderPage(page){
   else if(page==='report')renderRepPage(p,a);
   else if(page==='btl')renderBtlPage(p,a);
   else if(page==='compare')renderComparePage();
+  applyRoleGuards(page,p);
+}
+
+function applyRoleGuards(page,p=AP()){
+  if(!p||canEditProject(p))return;
+  if(['detail','btl'].includes(page))makeContainerReadOnly(document.getElementById(`page-${page}`));
+}
+function makeContainerReadOnly(root){
+  if(!root)return;
+  root.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=true;el.readOnly=true;});
+  root.querySelectorAll('button.btn').forEach(btn=>{
+    if(btn.closest('.sub-tabs'))return;
+    btn.style.display='none';
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -988,7 +1136,7 @@ function renderPortfolio(){
     const roi=a?a.roi:0,netFin=a?a.netFinal:0;
     return`<div class="project-card${p.id===ST.activeProjectId?' sel':''}" data-pid="${p.id}">
       <div class="pc-top">
-        <div><div class="pc-name">${esc(p.name||'Projeto sem nome')}</div><div class="pc-meta">${esc(p.city||'Sem cidade')}${p.parish?` · ${esc(p.parish)}`:''}</div></div>
+        <div><div class="pc-name">${esc(p.name||'Projeto sem nome')}</div><div class="pc-meta">${esc(p.city||'Sem cidade')}${p.parish?` · ${esc(p.parish)}`:''} · Acesso: ${esc(roleLabel(p._accessRole||'viewer'))}</div></div>
         <span class="badge ${bc}">${esc(p.strategy)}</span>
       </div>
       <div class="pc-stats">
@@ -999,7 +1147,7 @@ function renderPortfolio(){
     </div>`;
   }).join('');
   c.querySelectorAll('[data-pid]').forEach(el=>{
-    el.onclick=()=>{ST.activeProjectId=el.dataset.pid;save();nav('dashboard');};
+    el.onclick=()=>{ST.activeProjectId=el.dataset.pid;save();syncMembersSubscription(ST.activeProjectId);nav('dashboard');};
   });
 }
 
@@ -2132,10 +2280,12 @@ function renderInvPage(p,a){
   const c=q('invContent');
   if(!p){c.innerHTML=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Sem projeto selecionado</div></div>`;return;}
   const splitOk=p.investors.length&&Math.abs((a?a.splitSum:0)-100)<.01;
+  const readOnly=!canEditProject(p);
   c.innerHTML=`
+    ${readOnly?`<div class="alert warn" style="margin-bottom:12px">👁️ Tens acesso apenas de leitura a este projeto.</div>`:''}
     <div class="section-header">
       <div class="section-title">Investidores</div>
-      <button class="btn btn-primary btn-sm" onclick="openInvM()">＋ Investidor</button>
+      ${canEditProject(p)?`<button class="btn btn-primary btn-sm" onclick="openInvM()">＋ Investidor</button>`:''}
     </div>
     ${p.investors.length?`<div class="card" style="margin-bottom:12px">
       <div class="card-title">Sumário</div>
@@ -2144,26 +2294,34 @@ function renderInvPage(p,a){
       ${mt('Investidores registados',String(p.investors.length))}
     </div>`:''}
     <div id="invCards"></div>
+    <div class="card" style="margin-top:12px">
+      <div class="section-header" style="margin-bottom:10px">
+        <div class="card-title">Acessos à plataforma</div>
+        ${canManageAccess(p)?`<button class="btn btn-secondary btn-sm" onclick="openAccessM()">＋ Acesso</button>`:''}
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">Cada utilizadora ou utilizador com acesso entra por email/password e vê apenas os projetos em que foi adicionado.</div>
+      ${canManageAccess(p)?`<div class="alert ok" style="margin-bottom:12px">Para atribuir acesso, a pessoa tem de criar conta primeiro na app com o email que vais associar.</div>`:''}
+      <div id="accessCards"></div>
+    </div>
     ${a&&a.invRes.length?`<div class="card" style="margin-top:12px"><div class="card-title">Investido vs Lucro vs Imposto</div><div class="chart-wrap tall"><canvas id="cInv"></canvas></div></div>`:''}
-    ${p.workCosts&&p.workCosts.length&&p.investors.length?`<div class="card" style="margin-top:12px"><div class="card-title">🔨 Obras por Investidor</div><div class="chart-wrap tall"><canvas id="cObras"></canvas></div></div>`:''}  
+    ${p.workCosts&&p.workCosts.length&&p.investors.length?`<div class="card" style="margin-top:12px"><div class="card-title">🔨 Obras por Investidor</div><div class="chart-wrap tall"><canvas id="cObras"></canvas></div></div>`:''}
   `;
   renderInvCards(p,a);
+  renderAccessCards(p);
   if(a&&a.invRes.length){
     requestAnimationFrame(()=>renderInvChart(a));
-    // Render obras summary chart if there are work costs
     if(p.workCosts&&p.workCosts.length) setTimeout(()=>renderObrasChart(p,a),100);
   }
 }
 function renderInvCards(p,a){
   const c=q('invCards');if(!c)return;
-  if(!p.investors.length){c.innerHTML=`<div class="empty"><div class="empty-icon">👤</div><div class="empty-title">Sem investidores</div><div class="empty-text">Adiciona os participantes deste projeto.</div></div>`;return;}
+  if(!p.investors.length){c.innerHTML=`<div class="empty"><div class="empty-icon">👤</div><div class="empty-title">Sem investidores</div><div class="empty-text">Adiciona os participantes financeiros deste projeto.</div></div>`;return;}
+  const allowEdit=canEditProject(p);
   c.innerHTML=p.investors.map(inv=>{
     const res=a?a.invRes.find(r=>r.id===inv.id):null;
     const tot=res?res.tot:Number(inv.entryCapitalAmount||0);
     const capTotal=a?a.capTotal:0;
     const barW=capTotal>0?Math.min(100,tot/capTotal*100):0;
-
-    // Breakdown de obras para este investidor
     const myWorks=p.workCosts.filter(w=>w.investorId===inv.id);
     const myWrkTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
     const myAcq=res?res.adm:0;
@@ -2171,31 +2329,24 @@ function renderInvCards(p,a){
     const myBuy=Number(inv.entryCapitalAmount||0);
     const totalWrkAll=a?a.wrkTotal:0;
     const wrkBarW=totalWrkAll>0?Math.min(100,myWrkTotal/totalWrkAll*100):0;
-
-    // Obras por especialidade para este investidor
     const bySpec={};
-    myWorks.forEach(w=>{
-      const sp=w.specialty||'Outro';
-      bySpec[sp]=(bySpec[sp]||0)+Number(w.amount||0);
-    });
+    myWorks.forEach(w=>{const sp=w.specialty||'Outro';bySpec[sp]=(bySpec[sp]||0)+Number(w.amount||0);});
     const specEntries=Object.entries(bySpec).sort((a,b)=>b[1]-a[1]).slice(0,6);
     const specMax=specEntries.length?specEntries[0][1]:1;
 
     return`<div class="inv-card">
-      <!-- Cabeçalho -->
       <div class="inv-head">
         <div class="inv-dot" style="background:${inv.colorHex}22;color:${inv.colorHex}">${(inv.name||'?')[0].toUpperCase()}</div>
         <div style="flex:1">
           <div class="inv-name">${esc(inv.name||'Sem nome')}</div>
           <div class="inv-role">${esc(inv.role||'—')} · Split lucro: ${pct(inv.profitSplitPct)}</div>
         </div>
-        <div style="display:flex;gap:5px">
+        ${allowEdit?`<div style="display:flex;gap:5px">
           <button class="btn btn-icon" onclick="openInvM('${inv.id}')">✏️</button>
           <button class="btn btn-icon btn-danger" onclick="rmInv('${inv.id}')">🗑️</button>
-        </div>
+        </div>`:''}
       </div>
 
-      <!-- KPIs financeiros -->
       <div class="inv-stats">
         <div class="is"><div class="il">Capital entrada</div><div class="iv">${eur(myBuy)}</div></div>
         <div class="is"><div class="il">Investido em obras</div><div class="iv" style="color:var(--blue)">${eur(myWrkTotal)}</div></div>
@@ -2208,7 +2359,6 @@ function renderInvCards(p,a){
         <div class="is"><div class="il">Valor a receber</div><div class="iv" style="color:var(--accent);font-weight:700">${eur(res.net)}</div></div>`:''}
       </div>
 
-      <!-- Barra capital total -->
       <div style="margin:8px 0 4px">
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:3px">
           <span>% do capital total do projecto</span>
@@ -2217,50 +2367,44 @@ function renderInvCards(p,a){
         <div class="prog"><div class="prog-fill" style="width:${barW}%;background:${inv.colorHex}"></div></div>
       </div>
 
-      <!-- Secção de Obras -->
       ${myWrkTotal>0?`<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--blue)">🔨 Investimento em Obras</div>
           <div style="font-size:11px;font-weight:700;color:var(--blue)">${eur(myWrkTotal)}</div>
         </div>
-        <div style="margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:3px">
-            <span>% das obras totais do projecto</span>
-            <span>${wrkBarW.toFixed(1)}%</span>
-          </div>
-          <div style="height:6px;background:var(--surface);border-radius:999px;overflow:hidden">
-            <div style="height:100%;width:${wrkBarW}%;background:var(--blue);border-radius:999px"></div>
-          </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:3px">
+          <span>% do total de obras</span>
+          <span>${wrkBarW.toFixed(1)}%</span>
         </div>
-        ${specEntries.length?`<div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Por Especialidade</div>
-        ${specEntries.map(([sp,val])=>{
-          const spPct=Math.round(val/specMax*100);
-          return '<div style="margin-bottom:7px">'
-            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'
-            +'<span style="font-size:10px;color:var(--text2);max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(sp)+'</span>'
-            +'<span style="font-size:10px;font-weight:700;color:var(--blue)">'+eur(val)+'</span>'
-            +'</div>'
-            +'<div style="height:5px;background:var(--surface);border-radius:999px;overflow:hidden">'
-            +'<div style="height:100%;width:'+spPct+'%;background:var(--blue);opacity:.7;border-radius:999px"></div>'
-            +'</div>'
-            +'</div>';
-        }).join('')}`:''}
-        ${myWorks.length>0?`<div style="margin-top:8px">
-          <div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Registos (${myWorks.length})</div>
-          ${myWorks.slice(0,5).map(w=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
-            <div>
-              <div style="font-size:10px;color:var(--text2)">${esc(w.specialty||'—')}${w.supplier?' · '+esc(w.supplier):''}</div>
-              ${w.date?`<div style="font-size:9px;color:var(--muted)">${w.date}</div>`:''}
-            </div>
-            <div style="font-size:11px;font-weight:700;color:var(--text);flex-shrink:0">${eur(w.amount)}</div>
-          </div>`).join('')}
-          ${myWorks.length>5?`<div style="font-size:10px;color:var(--muted);text-align:center;padding-top:6px">+ ${myWorks.length-5} registos adicionais</div>`:''}
-        </div>`:''}
-      </div>`:'<div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:8px;font-size:11px;color:var(--muted);text-align:center">Sem obras registadas para este investidor</div>'}
+        <div class="prog" style="margin-bottom:12px"><div class="prog-fill" style="width:${wrkBarW}%;background:var(--blue)"></div></div>
+        ${specEntries.length?`<div style="display:grid;gap:8px">${specEntries.map(([spec,val])=>{
+          const w=specMax>0?(val/specMax)*100:0;
+          return `<div><div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin-bottom:3px"><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(spec)}</span><strong style="color:var(--text)">${eur(val)}</strong></div><div style="height:6px;background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${w}%;background:${inv.colorHex};border-radius:999px"></div></div></div>`;
+        }).join('')}</div>`:''}
+      </div>`:''}
     </div>`;
   }).join('');
-
 }
+
+function renderAccessCards(p){
+  const c=q('accessCards');if(!c)return;
+  if(!PROJECT_MEMBERS.length){
+    c.innerHTML=`<div class="empty" style="padding:18px 10px"><div class="empty-icon">🔐</div><div class="empty-title">Sem acessos adicionais</div><div class="empty-text">Só a conta proprietária tem acesso neste momento.</div></div>`;
+    return;
+  }
+  const canManage=canManageAccess(p);
+  c.innerHTML=PROJECT_MEMBERS.map(member=>`<div class="list-item">
+      <div class="li-info">
+        <div class="lt">${esc(member.displayName||member.email||member.uid||'Utilizador')}</div>
+        <div class="lm">${esc(member.email||'Sem email')} · ${esc(roleLabel(member.role||'viewer'))}</div>
+      </div>
+      <div class="li-right" style="align-items:flex-end">
+        ${syncRolePill(member.role||'viewer')}
+        ${canManage&&member.uid!==CURRENT_USER?.uid?`<button class="btn btn-icon btn-danger" onclick="rmProjectAccess('${member.uid}')">🗑️</button>`:''}
+      </div>
+    </div>`).join('');
+}
+
 function renderInvChart(a){
   dc('cInv');const ctx=q('cInv');if(!ctx)return;
   const res=a.invRes;
@@ -2403,7 +2547,8 @@ function openNewProject(){
   `;
   openM('mNewProject');
 }
-function createProject(){
+async function createProject(){
+  if(!DB||!CURRENT_USER){showToast('Firebase não disponível');return;}
   const name=q('np_name')?.value?.trim()||'Novo Projeto';
   const p=blank();
   p.name=name;
@@ -2412,12 +2557,29 @@ function createProject(){
   p.typology=q('np_typo')?.value||'';
   p.purchasePrice=Number(q('np_price')?.value||0);
   p.expectedSalePrice=Number(q('np_esale')?.value||0);
-  ST.projects.push(p);ST.activeProjectId=p.id;
-  save();closeM('mNewProject');nav('detail');showToast(`"${name}" criado ✓`);
+  p.ownerUid=CURRENT_USER.uid;
+  p.createdByUid=CURRENT_USER.uid;
+  try{
+    setSyncStatus('syncing');
+    await projectRef(p.id).set(sanitizeProjectForCloud({...p,_accessRole:'owner'}));
+    await userAccessRef(CURRENT_USER.uid).doc(p.id).set({projectId:p.id,role:'owner',projectName:p.name||'',grantedAt:firebase.firestore.FieldValue.serverTimestamp(),grantedByUid:CURRENT_USER.uid},{merge:true});
+    await projectRef(p.id).collection('members').doc(CURRENT_USER.uid).set({uid:CURRENT_USER.uid,email:CURRENT_USER.email||'',displayName:CURRENT_USER.displayName||CURRENT_USER.email||'Owner',role:'owner',addedAt:firebase.firestore.FieldValue.serverTimestamp(),addedByUid:CURRENT_USER.uid},{merge:true});
+    ST.activeProjectId=p.id;
+    save();
+    closeM('mNewProject');
+    nav('detail');
+    showToast(`"${name}" criado ✓`);
+    setSyncStatus('ok');
+  }catch(e){
+    console.error(e);
+    setSyncStatus('offline');
+    showToast('Erro ao criar projeto');
+  }
 }
 
 function openInvM(editId=null){
   const p=AP();if(!p)return;
+  if(!canEditProject(p)){showToast('Sem permissão para editar');return;}
   editInvId=editId;
   const inv=editId?p.investors.find(i=>i.id===editId):null;
   q('mInvTitle').textContent=inv?'Editar Investidor':'Novo Investidor';
@@ -2433,6 +2595,7 @@ function openInvM(editId=null){
 }
 function saveInvestor(){
   const p=AP();if(!p)return;
+  if(!canEditProject(p)){showToast('Sem permissão para editar');return;}
   const inv={
     name:q('inv_name')?.value||'',role:q('inv_role')?.value||'Capital',
     entryCapitalAmount:Number(q('inv_cap')?.value||0),
@@ -2445,13 +2608,67 @@ function saveInvestor(){
   setP(p);closeM('mInvestor');renderInvPage(p,analyze(p));showToast('Investidor guardado ✓');
 }
 function rmInv(id){
-  const p=AP();if(!p||!confirm('Remover investidor?'))return;
+  const p=AP();if(!p||!canEditProject(p)||!confirm('Remover investidor?'))return;
   p.investors=p.investors.filter(i=>i.id!==id);
   setP(p);renderInvPage(p,analyze(p));
 }
 
+function openAccessM(){
+  const p=AP();if(!p)return;
+  if(!canManageAccess(p)){showToast('Só o owner pode gerir acessos');return;}
+  q('fmAccess').innerHTML=`
+    ${fi('acc_email','Email da conta a autorizar','','email')}
+    ${fs('acc_role','Nível de acesso',ACCESS_ROLES,'viewer')}
+    <div class="fgrp f-full"><label class="flabel">Notas</label><div class="alert warn">A pessoa tem primeiro de criar conta na app com este email. Depois atribuis o acesso ao projeto.</div></div>
+  `;
+  openM('mAccess');
+}
+
+async function saveProjectAccess(){
+  const p=AP();if(!p)return;
+  if(!canManageAccess(p)){showToast('Só o owner pode gerir acessos');return;}
+  const emailLower=normalizeEmail(q('acc_email')?.value);
+  const role=q('acc_role')?.value||'viewer';
+  if(!emailLower){showToast('Indica um email válido');return;}
+  try{
+    setSyncStatus('syncing');
+    const lookup=await userLookupRef(emailLower).get();
+    if(!lookup.exists){setSyncStatus('ok');showToast('Esse email ainda não tem conta criada na app');return;}
+    const u=lookup.data()||{};
+    if(!u.uid){setSyncStatus('ok');showToast('Utilizador inválido');return;}
+    await userAccessRef(u.uid).doc(p.id).set({projectId:p.id,role,projectName:p.name||'',grantedAt:firebase.firestore.FieldValue.serverTimestamp(),grantedByUid:CURRENT_USER.uid},{merge:true});
+    await projectRef(p.id).collection('members').doc(u.uid).set({uid:u.uid,email:u.email||emailLower,displayName:u.displayName||u.email||'Utilizador',role,addedAt:firebase.firestore.FieldValue.serverTimestamp(),addedByUid:CURRENT_USER.uid},{merge:true});
+    closeM('mAccess');
+    showToast('Acesso atribuído ✓');
+    setSyncStatus('ok');
+  }catch(e){
+    console.error(e);
+    setSyncStatus('offline');
+    showToast('Erro ao guardar acesso');
+  }
+}
+
+async function rmProjectAccess(uidToRemove){
+  const p=AP();if(!p)return;
+  if(!canManageAccess(p)){showToast('Só o owner pode gerir acessos');return;}
+  if(uidToRemove===CURRENT_USER?.uid){showToast('O owner não pode remover o próprio acesso');return;}
+  if(!confirm('Remover acesso a este projeto?'))return;
+  try{
+    setSyncStatus('syncing');
+    await projectRef(p.id).collection('members').doc(uidToRemove).delete();
+    await userAccessRef(uidToRemove).doc(p.id).delete();
+    showToast('Acesso removido ✓');
+    setSyncStatus('ok');
+  }catch(e){
+    console.error(e);
+    setSyncStatus('offline');
+    showToast('Erro ao remover acesso');
+  }
+}
+
 function openCostM(mode){
   const p=AP();if(!p)return;
+  if(!canEditProject(p)){showToast('Sem permissão para editar');return;}
   costMode=mode;
   const titles={admin:'Rubrica de Aquisição',work:'Custo de Obra',other:'Outra Despesa'};
   q('mCostTitle').textContent=titles[mode]||'Novo Custo';
@@ -2469,6 +2686,7 @@ function openCostM(mode){
 }
 function saveCost(){
   const p=AP();if(!p)return;
+  if(!canEditProject(p)){showToast('Sem permissão para editar');return;}
   const amt=Number(q('cf_amt')?.value||0),date=q('cf_date')?.value||'',invId=q('cf_inv')?.value||'';
   if(costMode==='admin'){
     const cat=q('cf_cat')?.value||'outro';
@@ -2483,7 +2701,7 @@ function saveCost(){
   setP(p);closeM('mCost');renderDetail();showToast('Custo adicionado ✓');
 }
 function rmCost(type,id){
-  const p=AP();if(!p)return;
+  const p=AP();if(!p||!canEditProject(p))return;
   if(type==='admin')p.acquisitionEntries=p.acquisitionEntries.filter(e=>e.id!==id);
   else if(type==='work')p.workCosts=p.workCosts.filter(w=>w.id!==id);
   else p.otherCosts=p.otherCosts.filter(o=>o.id!==id);
@@ -2537,25 +2755,17 @@ function exportPDF(){
     // ── HELPER: sanitiza texto para Helvetica (sem suporte Unicode) ─
     const T=s=>{
       if(typeof s!=='string')return String(s||'');
-      var m={
-        'à':'a','á':'a','â':'a','ã':'a','ä':'a',
-        'À':'A','Á':'A','Â':'A','Ã':'A','Ä':'A',
-        'ç':'c','Ç':'C',
-        'é':'e','ê':'e','è':'e','É':'E','Ê':'E','È':'E',
-        'í':'i','ì':'i','î':'i','Í':'I','Ì':'I','Î':'I',
-        'ó':'o','ò':'o','ô':'o','õ':'o','Ó':'O','Ò':'O','Ô':'O','Õ':'O',
-        'ú':'u','ù':'u','û':'u','Ú':'U','Ù':'U','Û':'U',
-        'ñ':'n','Ñ':'N',
-        '—':'-','–':'-','’':"'"
-      };
-      return s.split('').map(function(c){
-        if(m[c])return m[c];
-        var code=c.charCodeAt(0);
-        if(code===0x20AC)return c;
-        if(code>0xFF)return '';
-        return c;
-      }).join('');
-    }
+      return s
+        .replace(/à|á|â|ã|ä/g,'a').replace(/À|Á|Â|Ã|Ä/g,'A')
+        .replace(/ç/g,'c').replace(/Ç/g,'C')
+        .replace(/é|ê|è/g,'e').replace(/É|Ê|È/g,'E')
+        .replace(/í|ì|î/g,'i').replace(/Í|Ì|Î/g,'I')
+        .replace(/ó|ò|ô|õ/g,'o').replace(/Ó|Ò|Ô|Õ/g,'O')
+        .replace(/ú|ù|û/g,'u').replace(/Ú|Ù|Û/g,'U')
+        .replace(/ñ/g,'n').replace(/Ñ/g,'N')
+        .replace(/—|–/g,'-').replace(/’/g,"'")
+        .replace(/[^ -ÿ]/g,'?');
+    };
     // ── HELPER: autoTable section ───────────────────────────────
     const AT=(title,rows,cols=['Rubrica','Valor'])=>{
       if(y>H-50){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
@@ -2721,7 +2931,7 @@ function exportPDF(){
             const myTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
             const myPct=(myTotal/totalWrkProj*100).toFixed(1)+'%';
             // Linha de cabeçalho do investidor
-            obrasRows.push([`>> ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
+            obrasRows.push([`▶ ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
             // Linhas individuais
             myWorks.forEach(w=>{
               obrasRows.push([
@@ -3059,6 +3269,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const _bC=q('btnCreateProject'); if(_bC) _bC.onclick=createProject;
   const _bI=q('btnSaveInvestor');  if(_bI) _bI.onclick=saveInvestor;
   const _bS=q('btnSaveCost');      if(_bS) _bS.onclick=saveCost;
+  const _bA=q('btnSaveAccess');    if(_bA) _bA.onclick=saveProjectAccess;
   // Close on overlay click
   document.querySelectorAll('.modal-ov').forEach(ov=>{
     ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
@@ -3080,13 +3291,13 @@ document.addEventListener('DOMContentLoaded',()=>{
     checkShareLink();nav('portfolio');
   }
 
-  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.multiuser.js').catch(()=>{});
 });
 
 // Show delete button only when project is active and not on portfolio
 function updateTopBar(page){
   const btn=q('btnDel');if(!btn)return;
-  btn.style.display=(AP()&&page!=='portfolio')?'flex':'none';
+  btn.style.display=(AP()&&page!=='portfolio'&&canManageAccess(AP()))?'flex':'none';
 }
 
 function deleteActiveProject(){
