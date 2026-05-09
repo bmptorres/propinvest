@@ -406,7 +406,7 @@
         <label class="flabel">Password</label>
         <input class="finput" id="liPass" type="password" placeholder="••••••••" autocomplete="current-password" />
       </div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px" id="btnLogin" onclick="doEmailLogin()">Entrar</button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px" onclick="doEmailLogin()">Entrar</button>
       <div style="text-align:center;margin-top:12px">
         <span style="font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline" onclick="doResetPassword()">Esqueci a password</span>
       </div>
@@ -437,12 +437,10 @@
     <div style="text-align:center;margin-top:20px;font-size:10px;color:var(--muted)">
       Os teus dados ficam guardados em segurança na cloud<br>e sincronizam em todos os dispositivos.
     </div>
-
-
   </div>
 </div>
 
-<div id="app" style="display:none">
+<div id="app">
   <div class="sync-badge" id="syncBadge" style="display:none"><span id="syncDot">●</span><span id="syncLabel">✓</span></div>
   <div class="topbar">
     <div class="logo">
@@ -635,42 +633,34 @@ function blank(){
 
 // ─────────────────────────────────────────────────────────────
 //  FIREBASE — INIT & AUTH
-
+// ─────────────────────────────────────────────────────────────
 let FB=null,DB=null,AUTH=null,CURRENT_USER=null,SYNC_UNSUB=null;
 
 function initFirebase(){
   try{
     if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-    FB   = firebase.app();
-    AUTH = firebase.auth();
-    DB   = firebase.firestore();
-    // Persistência offline
-    DB.enablePersistence({synchronizeTabs:true}).catch(e=>{
-      if(e.code!=='failed-precondition'&&e.code!=='unimplemented')
-        console.warn('Persistence:',e.code);
-    });
-    // Listener de autenticação
+    FB=firebase.app();
+    AUTH=firebase.auth();
+    DB=firebase.firestore();
+    DB.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     AUTH.onAuthStateChanged(user=>{
       if(user){
-        CURRENT_USER = user;
+        CURRENT_USER=user;
         showApp(user);
         startSync();
-      } else {
-        CURRENT_USER = null;
+      }else{
+        CURRENT_USER=null;
         stopSync();
         showLoginScreen();
       }
-    }, err=>{
-      console.error('Auth state error:', err);
-      showLoginScreen();
     });
+    return true;
   }catch(e){
-    console.error('Firebase init error:', e);
-    // Mostra erro na tela de login
-    const el = document.getElementById('loginErr');
-    if(el) el.textContent = 'Erro Firebase: ' + e.message;
+    console.warn('Firebase init failed, using localStorage',e);
+    return false;
   }
 }
+
 function userDocRef(){
   if(!DB||!CURRENT_USER)return null;
   return DB.collection('users').doc(CURRENT_USER.uid).collection('data').doc('propinvest');
@@ -692,8 +682,6 @@ async function cloudSave(){
   try{
     await ref.set({...ST,_updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     setSyncStatus('ok');
-    // Sincroniza projetos partilhados com investidores
-    syncSharedProjects().catch(()=>{});
   }catch(e){
     setSyncStatus('offline');
     console.warn('Cloud save failed',e);
@@ -726,11 +714,7 @@ function startSync(){
     }
   },err=>{
     setSyncStatus('offline');
-    console.warn('Sync error',err.message);
-    // Firestore bloqueado: garante render com dados locais
-    if(!ST.projects){load();}
-    const ap2=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
-    if(!window._appEditing){renderPage(ap2);}
+    console.warn('Sync error',err);
   });
 }
 
@@ -1451,7 +1435,7 @@ function tabObras(p,a){
   <div class="card">
     <div class="card-head">
       <div class="card-title">Custos de Obra</div>
-      ${IS_ADMIN?`<button class="btn btn-primary btn-sm" onclick="openCostM('work')">＋ Custo</button>`:''}
+      <button class="btn btn-primary btn-sm" onclick="openCostM('work')">＋ Custo</button>
     </div>
     <div id="workList"></div>
   </div>`;
@@ -2113,7 +2097,7 @@ function bindFinanciamento(p){
     const hi=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);};
     const hc=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);renderDetail();};
     el.removeEventListener('input',el._fni);el._fni=hi;el.addEventListener('input',hi);
-    el.removeEventListener('change',el._fnc);el._fnc=hc;el.addEventListener('change',hc);
+    el.removeEventListener('change',el._fnc);el._fnc=hc;el.addEventListener('change',hc);    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
   };
   b('fn_use',(p,v)=>p.financingConfig.useFinancing=v);
   b('fn_loan',(p,v)=>p.financingConfig.loanAmount=Number(v||0),Number);
@@ -2154,7 +2138,7 @@ function renderInvPage(p,a){
   c.innerHTML=`
     <div class="section-header">
       <div class="section-title">Investidores</div>
-      ${IS_ADMIN?`<button class="btn btn-primary btn-sm" onclick="openInvM()">＋ Investidor</button>`:''}
+      <button class="btn btn-primary btn-sm" onclick="openInvM()">＋ Investidor</button>
     </div>
     ${p.investors.length?`<div class="card" style="margin-bottom:12px">
       <div class="card-title">Sumário</div>
@@ -2208,15 +2192,10 @@ function renderInvCards(p,a){
           <div class="inv-name">${esc(inv.name||'Sem nome')}</div>
           <div class="inv-role">${esc(inv.role||'—')} · Split lucro: ${pct(inv.profitSplitPct)}</div>
         </div>
-        ${(function(){
-        if(!IS_ADMIN)return '';
-        var b='<div style="display:flex;gap:4px">';
-        b+='<button class="btn btn-icon" onclick="openInvM(\''+inv.id+'\')" title="Editar">✏️</button>';
-        if(inv.email)b+='<button class="btn btn-icon" style="background:rgba(59,130,246,.15);color:#3b82f6" onclick="sendInvite(\''+inv.email+'\',\''+esc(p.name||'')+'\') " title="Enviar convite">📧</button>';
-        b+='<button class="btn btn-icon btn-danger" onclick="rmInv(\''+inv.id+'\')">🗑️</button>';
-        b+='</div>';
-        return b;
-      })()} </div>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-icon" onclick="openInvM('${inv.id}')">✏️</button>
+          <button class="btn btn-icon btn-danger" onclick="rmInv('${inv.id}')">🗑️</button>
+        </div>
       </div>
 
       <!-- KPIs financeiros -->
@@ -2447,7 +2426,6 @@ function openInvM(editId=null){
   q('mInvTitle').textContent=inv?'Editar Investidor':'Novo Investidor';
   q('fmInvestor').innerHTML=`
     ${fi('inv_name','Nome',inv?.name||'')}
-    ${fi('inv_email','Email (para convite)',inv?.email||'','email')}
     ${fs('inv_role','Função',ROLES,inv?.role||'Capital')}
     ${fi('inv_cap','Capital de entrada (€)',inv?.entryCapitalAmount||0,'number')}
     ${fi('inv_split','Profit split (%)',inv?.profitSplitPct||0,'number')}
@@ -2462,8 +2440,7 @@ function saveInvestor(){
     name:q('inv_name')?.value||'',role:q('inv_role')?.value||'Capital',
     entryCapitalAmount:Number(q('inv_cap')?.value||0),
     profitSplitPct:Number(q('inv_split')?.value||0),
-    email:(q('inv_email')?.value||'').toLowerCase().trim(),
-    taxRateEstimatedPct:Number(q('inv_tax')?.value||28),
+    taxRateEstimatedPct:Number(q('inv_tax')?.value||37),
     colorHex:q('inv_color')?.value||nextColor(p.investors.map(i=>i.colorHex))
   };
   if(editInvId)p.investors=p.investors.map(i=>i.id===editInvId?{...i,...inv}:i);
@@ -2561,41 +2538,14 @@ function exportPDF(){
     doc.line(M,y,W-M,y);y+=8;
 
     // ── HELPER: autoTable section ───────────────────────────────
-    // Converte unicode PT para Latin-1 compativel com Helvetica no jsPDF
-    const T=function(s){
-      if(typeof s!=='string')return String(s||'');
-      return s
-        .replace(/à/g,'a').replace(/á/g,'a').replace(/â/g,'a').replace(/ã/g,'a').replace(/ä/g,'a')
-        .replace(/À/g,'A').replace(/Á/g,'A').replace(/Â/g,'A').replace(/Ã/g,'A').replace(/Ä/g,'A')
-        .replace(/ç/g,'c').replace(/Ç/g,'C')
-        .replace(/é/g,'e').replace(/ê/g,'e').replace(/è/g,'e')
-        .replace(/É/g,'E').replace(/Ê/g,'E').replace(/È/g,'E')
-        .replace(/í/g,'i').replace(/ì/g,'i').replace(/î/g,'i')
-        .replace(/Í/g,'I').replace(/Ì/g,'I').replace(/Î/g,'I')
-        .replace(/ó/g,'o').replace(/ò/g,'o').replace(/ô/g,'o').replace(/õ/g,'o')
-        .replace(/Ó/g,'O').replace(/Ò/g,'O').replace(/Ô/g,'O').replace(/Õ/g,'O')
-        .replace(/ú/g,'u').replace(/ù/g,'u').replace(/û/g,'u')
-        .replace(/Ú/g,'U').replace(/Ù/g,'U').replace(/Û/g,'U')
-        .replace(/ñ/g,'n').replace(/Ñ/g,'N')
-        .replace(/—/g,'-').replace(/–/g,'-').replace(/’/g,"'")
-        .replace(/²/g,'2').replace(/³/g,'3').replace(/°/g,' graus')
-        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g,'')
-        .replace(/[^\x00-\xff]/g,'?');
-    };
-    // Wrapper AT: sanitiza titulo e celulas
-    const AT=function(title,rows,cols){
-      if(!cols)cols=['Rubrica','Valor'];
+    const AT=(title,rows,cols=['Rubrica','Valor'])=>{
       if(y>H-50){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
       doc.setFontSize(10.5);doc.setFont('helvetica','bold');doc.setTextColor(...TESSA_DARK);
-      doc.text(T(title),M,y);y+=5;
-      const safeRows=rows.map(function(row){
-        return Array.isArray(row)?row.map(function(cell){return T(String(cell??''));}):row;
-      });
-      const safeCols=cols.map(function(c){return T(String(c));});
+      doc.text(title,M,y);y+=5;
       doc.autoTable({
         startY:y,
-        head:[safeCols],
-        body:safeRows,
+        head:[cols],
+        body:rows,
         theme:'grid',
         styles:{fontSize:9,cellPadding:3.5,font:'helvetica',textColor:BLACK},
         headStyles:{fillColor:TESSA_DARK,textColor:WHITE,fontStyle:'bold',fontSize:9},
@@ -2613,7 +2563,7 @@ function exportPDF(){
         ['Aquisição All-In (inc. impostos)',eur(a.acqAll)],
         ['Total Obras',eur(a.wrkTotal)],
         ['Venda de referência',eur(a.saleRef)],
-        ['Venda liquida',eur(a.saleNet)],
+        ['Venda líquida',eur(a.saleNet)],
         ['Lucro bruto',eur(a.profit)],
         ['Imposto mais-valias (50%×28%)',eur(a.taxTotal)],
         ['Lucro líquido pós-imposto',eur(a.netProfit||0)],
@@ -2705,7 +2655,7 @@ function exportPDF(){
         ['Referência de venda',eur(a.saleRef)],
         ['Comissão mediação AMI',eur(a.ami)],
         ['Outros custos venda',eur(a.saleOth)],
-        ['Venda liquida',eur(a.saleNet)],
+        ['Venda líquida',eur(a.saleNet)],
         ['Capital total a reembolsar',eur(a.capTotal)],
         ['Lucro bruto (venda líq. − capital)',eur(a.profit)],
       ]);
@@ -2885,7 +2835,7 @@ function exportPDF(){
       // 15. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
         AT('15. Alertas e Validacoes',
-          a.warns.map(function(w){return[w.t==='err'?'ERRO':'AVISO',String(w.m||'')];})
+          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^ -]/g,'?')])
         ,['Tipo','Descricao']);
       }
     }
@@ -3008,29 +2958,18 @@ function clearLoginMsg(){
 }
 
 async function doEmailLogin(){
-  if(!AUTH){ setLoginErr('A carregar, aguarda...'); return; }
-  const email=(q('liEmail')?.value||'').trim();
-  const pass=q('liPass')?.value||'';
-  if(!email||!pass){ setLoginErr('Preenche email e password.'); return; }
-  const btn=q('btnLogin');
-  if(btn){btn.disabled=true;btn.textContent='A entrar...';}
-  setLoginErr('');
+  const email=q('liEmail')?.value?.trim(),pass=q('liPass')?.value;
+  if(!email||!pass){setLoginErr('Preenche email e password.');return;}
   try{
     await AUTH.signInWithEmailAndPassword(email,pass);
   }catch(e){
-    if(btn){btn.disabled=false;btn.textContent='Entrar';}
     const msgs={
-      'auth/user-not-found':'Email não encontrado.',
+      'auth/user-not-found':'Utilizador não encontrado.',
       'auth/wrong-password':'Password incorrecta.',
       'auth/invalid-email':'Email inválido.',
-      'auth/invalid-credential':'Email ou password incorrectos.',
-      'auth/too-many-requests':'Demasiadas tentativas. Aguarda.',
-      'auth/user-disabled':'Conta desactivada.',
-      'auth/operation-not-allowed':'Login por email não activado no Firebase.',
-      'auth/network-request-failed':'Sem ligação à internet.',
+      'auth/too-many-requests':'Muitas tentativas. Aguarda um momento.',
     };
-    setLoginErr(msgs[e.code]||'Erro ('+e.code+'): '+e.message);
-    console.error('Login error:',e.code,e.message);
+    setLoginErr(msgs[e.code]||'Erro ao entrar: '+e.message);
   }
 }
 
@@ -3081,48 +3020,46 @@ async function doLogout(){
 //  INIT
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
-  // Orientação
+  // Orientation tracking
   function setOrient(){
-    const el=document.getElementById('app');
-    if(el) el.dataset.orient=window.innerWidth>window.innerHeight?'landscape':'portrait';
+    const land=window.innerWidth>window.innerHeight;
+    document.getElementById('app').dataset.orient=land?'landscape':'portrait';
   }
   setOrient();
   window.addEventListener('resize',setOrient);
   window.addEventListener('orientationchange',()=>setTimeout(setOrient,100));
 
-  // Navegação
-  document.querySelectorAll('.nav-btn').forEach(btn=>{
-    btn.onclick=()=>nav(btn.dataset.page);
-  });
-  document.querySelectorAll('.sub-tab').forEach(btn=>{
-    btn.onclick=()=>setSub(btn.dataset.sub);
-  });
-
-  // Botões — com null check para não crashar
-  const btnNew=q('btnNew'); if(btnNew) btnNew.onclick=openNewProject;
-  const btnCP=q('btnCreateProject'); if(btnCP) btnCP.onclick=createProject;
-  const btnSI=q('btnSaveInvestor'); if(btnSI) btnSI.onclick=saveInvestor;
-  const btnSC=q('btnSaveCost'); if(btnSC) btnSC.onclick=saveCost;
-
-  // Fechar modais ao clicar fora
+  // Bottom nav
+  document.querySelectorAll('.nav-btn').forEach(btn=>btn.onclick=()=>nav(btn.dataset.page));
+  // Sub tabs
+  document.querySelectorAll('.sub-tab').forEach(btn=>btn.onclick=()=>setSub(btn.dataset.sub));
+  // Button bindings
+  q('btnNew').onclick=openNewProject;
+  q('btnCreateProject').onclick=createProject;
+  q('btnSaveInvestor').onclick=saveInvestor;
+  q('btnSaveCost').onclick=saveCost;
+  // Close on overlay click
   document.querySelectorAll('.modal-ov').forEach(ov=>{
     ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
   });
 
-  // Firebase — inicializa SEMPRE se config estiver definida
-  if(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey!=='SUBSTITUI_AQUI'){
-    try{
-      initFirebase();
-    }catch(err){
-      console.error('Erro ao iniciar Firebase:',err);
-      setLoginErr('Erro ao iniciar: '+err.message);
-    }
+  // Init Firebase — if config not set, fall back to localStorage mode
+  const firebaseReady = FIREBASE_CONFIG.apiKey !== 'SUBSTITUI_AQUI';
+  if(firebaseReady){
+    initFirebase();
+    // App will be shown by onAuthStateChanged
+  } else {
+    // Demo mode — no Firebase config yet
+    console.warn('Firebase não configurado. A usar modo local.');
+    load();
+    // Hide login, show app directly in demo mode
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('app').style.display='flex';
+    q('topActs').innerHTML=`<button class="btn btn-ghost btn-sm" id="btnDel" style="display:none" onclick="deleteActiveProject()">🗑️</button>`;
+    checkShareLink();nav('portfolio');
   }
 
-  // Service Worker
-  if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  }
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 });
 
 // Show delete button only when project is active and not on portfolio
