@@ -1,4 +1,4 @@
-const CACHE_NAME = 'propinvest-v5';
+const CACHE_NAME = 'propinvest-v6';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -13,30 +13,38 @@ const STATIC_ASSETS = [
 
 // ── INSTALL ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
+  console.log('[SW v6] Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       return cache.addAll(STATIC_ASSETS.map(url => new Request(url, { mode: 'no-cors' })));
-    }).then(() => self.skipWaiting())
+    }).then(() => {
+      console.log('[SW v6] Installed. Skipping waiting.');
+      return self.skipWaiting();
+    })
   );
 });
 
-// ── ACTIVATE — apaga TODOS os caches antigos ──────────────────────────────────
+// ── ACTIVATE — apaga TODOS os caches antigos ─────────────────────────────────
 self.addEventListener('activate', event => {
+  console.log('[SW v6] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
           .filter(key => key !== CACHE_NAME)
           .map(key => {
-            console.log('[SW] Deleting old cache:', key);
+            console.log('[SW v6] Deleting old cache:', key);
             return caches.delete(key);
           })
       )
-    ).then(() => self.clients.claim())
+    ).then(() => {
+      console.log('[SW v6] Active. Claiming clients.');
+      return self.clients.claim();
+    })
   );
 });
 
-// ── FETCH — Network first, cache fallback ─────────────────────────────────────
+// ── FETCH — Network first SEMPRE para index.html ──────────────────────────────
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   if (!event.request.url.startsWith('http')) return;
@@ -64,7 +72,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // App shell — sempre tenta rede primeiro para garantir ícones actualizados
+  // ALWAYS network-first para garantir versão mais recente do app
   event.respondWith(
     fetch(event.request)
       .then(response => {
@@ -79,6 +87,7 @@ self.addEventListener('fetch', event => {
         if (event.request.mode === 'navigate') {
           return caches.match('./index.html');
         }
-      }))
+      })
+    )
   );
 });
