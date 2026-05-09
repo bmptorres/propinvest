@@ -1,93 +1,137 @@
-const CACHE_NAME = 'propinvest-v6';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'propinvest-v7';
+const RUNTIME_CACHE = 'propinvest-runtime-v7';
+
+const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './assets/icons/icon-192.png',
-  './assets/icons/icon-512.png',
-  'https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'
+  './assets/icons/icon-512.png'
 ];
 
 // ── INSTALL ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  console.log('[SW v6] Installing...');
+  console.log('[SW v7] Installing...');
+
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(STATIC_ASSETS.map(url => new Request(url, { mode: 'no-cors' })));
-    }).then(() => {
-      console.log('[SW v6] Installed. Skipping waiting.');
-      return self.skipWaiting();
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(APP_SHELL))
+      .then(() => {
+        console.log('[SW v7] Installed successfully.');
+        return self.skipWaiting();
+      })
+      .catch(error => {
+        console.error('[SW v7] Install failed:', error);
+        throw error;
+      })
   );
 });
 
-// ── ACTIVATE — apaga TODOS os caches antigos ─────────────────────────────────
+// ── ACTIVATE ─────────────────────────────────────────────────────────────────
 self.addEventListener('activate', event => {
-  console.log('[SW v6] Activating...');
+  console.log('[SW v7] Activating...');
+
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(key => key !== CACHE_NAME)
+          .filter(key => key !== CACHE_NAME && key !== RUNTIME_CACHE)
           .map(key => {
-            console.log('[SW v6] Deleting old cache:', key);
+            console.log('[SW v7] Deleting old cache:', key);
             return caches.delete(key);
           })
       )
     ).then(() => {
-      console.log('[SW v6] Active. Claiming clients.');
+      console.log('[SW v7] Active. Claiming clients.');
       return self.clients.claim();
     })
   );
 });
 
-// ── FETCH — Network first SEMPRE para index.html ──────────────────────────────
+// ── FETCH ────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  if (!event.request.url.startsWith('http')) return;
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(fetch(event.request));
+  const request = event.request;
+
+  if (request.method !== 'GET') return;
+  if (!request.url.startsWith('http')) return;
+
+  const url = new URL(request.url);
+  const isSameOrigin = url.origin === self.location.origin;
+
+  const isCDN =
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com') ||
+    url.hostname.includes('cdn.jsdelivr.net') ||
+    url.hostname.includes('cdnjs.cloudflare.com');
+
+  // API: sempre rede
+  if (url.pathname.includes('/api/')) {
+    event.respondWith(fetch(request));
     return;
   }
 
-  const isCDN = event.request.url.includes('fonts.googleapis.com') ||
-                event.request.url.includes('fonts.gstatic.com') ||
-                event.request.url.includes('cdn.jsdelivr.net') ||
-                event.request.url.includes('cdnjs.cloudflare.com');
+  // Navegação HTML: network first, fallback para index.html
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then(cache => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cachedPage = await caches.match(request);
+          if (cachedPage) return cachedPage;
 
+          return caches.match('./index.html');
+        })
+    );
+    return;
+  }
+
+  // Recursos externos (CDN / fonts): cache first
   if (isCDN) {
     event.respondWith(
-      caches.match(event.request).then(cached => {
+      caches.match(request).then(cached => {
         if (cached) return cached;
-        return fetch(event.request).then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+
+        return fetch(request).then(response => {
+          // Respostas opaque ou 200 podem ser guardadas
+          if (response) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then(cache => cache.put(request, clone));
+          }
           return response;
-        }).catch(() => cached);
+        });
       })
     );
     return;
   }
 
-  // ALWAYS network-first para garantir versão mais recente do app
+  // Recursos locais: stale-while-revalidate
+  if (isSameOrigin) {
+    event.respondWith(
+      caches.match(request).then(cached => {
+        const networkFetch = fetch(request)
+          .then(response => {
+            if (response && response.ok) {
+              const clone = response.clone();
+              caches.open(RUNTIME_CACHE).then(cache => cache.put(request, clone));
+            }
+            return response;
+          })
+          .catch(() => cached);
+
+        return cached || networkFetch;
+      })
+    );
+    return;
+  }
+
+  // Fallback genérico
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        if (response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then(cached => {
-        if (cached) return cached;
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-      })
-    )
+    fetch(request).catch(() => caches.match(request))
   );
 });
