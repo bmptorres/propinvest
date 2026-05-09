@@ -2576,48 +2576,20 @@ function rmCost(type,id){
 }
 
 // ─────────────────────────────────────────────────────────────
-async function sendInvestorInvite(id){
+function sendInvestorInvite(id){
   if(!requireOwner())return;
   const p=AP();if(!p)return;
   const inv=(p.investors||[]).find(i=>i.id===id);
   if(!inv||!inv.email){showToast('Adiciona o email do investidor primeiro.');return;}
   inv.inviteStatus='sent';inv.invitedAt=new Date().toISOString();setP(p);
   const url=inviteUrlFor(p,inv.email);
-  let emailStatus='manual';
-  try{
-    await syncSharedProjects([p]);
-    emailStatus=await queueInvestorInviteEmail(p,inv,url);
-  }catch(e){
-    console.warn('Invite automation failed',e);
-    emailStatus='error';
-  }
-  showInviteModal(p,inv,url,emailStatus);
-}
-
-async function queueInvestorInviteEmail(p,inv,url){
-  if(!DB||!CURRENT_USER)return 'manual';
-  const subject=`Convite PropInvest - ${p.name||'Projeto'}`;
-  const text=`Ola ${inv.name||''},
-
-Foste convidado a consultar o projeto "${p.name||'Projeto'}" no PropInvest.
-
-Abre este link, cria conta com este email (${inv.email}) e define a tua password:
-${url}
-
-O acesso e apenas de visualizacao.`;
-  const html=`<p>Ola ${esc(inv.name||'')},</p><p>Foste convidado a consultar o projeto <strong>${esc(p.name||'Projeto')}</strong> no PropInvest.</p><p><a href="${esc(url)}">Abrir convite</a></p><p>Cria conta com este email: <strong>${esc(inv.email)}</strong>.</p><p>O acesso e apenas de visualizacao.</p>`;
-  await DB.collection('mail').add({
-    to:[inv.email],
-    message:{subject,text,html},
-    ownerUid:CURRENT_USER.uid,
-    ownerEmail:CURRENT_USER.email||'',
-    projectId:p.id,
-    investorEmail:inv.email,
-    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  showInviteModal(p,inv,url,'manual');
+  openInviteEmail();
+  syncSharedProjects([p]).catch(e=>{
+    console.warn('Invite sharing failed',e);
+    showToast('Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.');
   });
-  return 'queued';
 }
-
 function showInviteModal(p,inv,url,emailStatus='manual'){
   document.getElementById('inviteModal')?.remove();
   const subject=encodeURIComponent(`Convite PropInvest - ${p.name||'Projeto'}`);
@@ -2629,12 +2601,10 @@ Abre este link, cria conta com este email (${inv.email}) e define a tua password
 ${url}
 
 O acesso e apenas de visualizacao.`;
-  const statusHtml=emailStatus==='queued'
-    ? `<div class="alert ok"><span>OK</span><span>Email colocado na fila de envio autom?tico para ${esc(inv.email)}.</span></div>`
-    : emailStatus==='error'
-      ? `<div class="alert warn"><span>!</span><span>Nao consegui enviar automaticamente. Copia o link ou usa Abrir email.</span></div>`
-      : `<div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. Copia o link ou abre o email.</span></div>`;
-  const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${subject}&body=${encodeURIComponent(rawBody)}`;
+  const statusHtml=emailStatus==='shareError'
+    ? `<div class="alert warn"><span>!</span><span>Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.</span></div>`
+    : `<div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. O email vai abrir preenchido e o link foi copiado.</span></div>`;  const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${subject}&body=${encodeURIComponent(rawBody)}`;
+  window.INVITE_MAILTO=mailto;
   const ov=document.createElement('div');
   ov.className='ai-modal-overlay';
   ov.id='inviteModal';
@@ -2651,15 +2621,17 @@ O acesso e apenas de visualizacao.`;
       </div>
       <div class="m-actions" style="margin-top:14px">
         <button class="btn btn-primary" onclick="copyInviteLink()">Copiar link</button>
-        <button class="btn btn-secondary" onclick="window.location.href='${mailto.replace(/'/g,'%27')}'">Abrir email</button>
+        <button class="btn btn-secondary" onclick="openInviteEmail()">Abrir email</button>
       </div>
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
   copyText(url);
-  showToast(emailStatus==='queued'?'Email de convite preparado.':'Convite criado e link copiado.');
+  showToast('Convite criado, link copiado e email preparado.');
 }
+
+function openInviteEmail(){if(window.INVITE_MAILTO)window.location.href=window.INVITE_MAILTO;}
 
 function copyText(txt){
   if(navigator.clipboard&&location.protocol!=='file:')return navigator.clipboard.writeText(txt).catch(()=>{});
@@ -3032,7 +3004,7 @@ function exportPDF(){
       // 15. AVISOS / ALERTAS ──────────────────────────────────
       if(a.warns.length){
         AT('15. Alertas e Validacoes',
-          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^ -]/g,'?')])
+          a.warns.map(w=>[w.t==='err'?'ERRO':'AVISO', w.m.replace(/[^-]/g,'?')])
         ,['Tipo','Descricao']);
       }
     }
