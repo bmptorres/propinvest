@@ -629,8 +629,8 @@ function inviteScriptUrlFor(){
 function openInviteScript(){
   const url=inviteScriptUrlFor();
   if(!url){showToast('Configura primeiro o URL do Google Apps Script no index.html.');return;}
-  const w=window.open(url,'_blank','noopener');
-  if(!w)window.location.href=url;
+  const w=window.open(url,'_blank');
+  if(!w)showToast('O browser bloqueou a janela. Permite pop-ups ou copia o convite.');
 }
 function applyModeUI(page){
   document.body.dataset.role=APP_ROLE;
@@ -2612,18 +2612,21 @@ function showInviteModal(p,inv,url,emailStatus='manual'){
   document.getElementById('inviteModal')?.remove();
   const investorName=(inv.name||'Investidor').trim();
   const projectName=p.name||'Projeto';
-  const subjectRaw=`Convite PropInvest - ${projectName}`;
+  const subjectRaw=`Acesso ao projeto ${projectName}`;
   const messageRaw=`Ola ${investorName},
 
-Foste convidado a consultar o projeto "${projectName}" no PropInvest.
+Segue o acesso ao projeto "${projectName}" na plataforma PropInvest.
 
-Para aceder, abre este link:
+Link de acesso:
 ${url}
 
-Cria conta com este email: ${inv.email}
-Depois define a tua password.
+Entra com este email: ${inv.email}
+Se ainda nao tiveres conta, cria uma password no primeiro acesso.
 
-O acesso e apenas de visualizacao.`;
+O teu acesso e apenas de consulta.
+
+Obrigado,
+Bruno Torres`;
   const fullRaw=`Para: ${inv.email}
 Assunto: ${subjectRaw}
 
