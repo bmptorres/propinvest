@@ -2579,9 +2579,8 @@ function exportPDF(){
         .replace(/ñ/g,'n').replace(/Ñ/g,'N')
         .replace(/—/g,'-').replace(/–/g,'-').replace(/’/g,"'")
         .replace(/²/g,'2').replace(/³/g,'3').replace(/°/g,' graus')
-        .replace(/[ -
--- ]/g,'')
-        .replace(/[^ - ]/g,'?');
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g,'')
+        .replace(/[^\x00-\xff]/g,'?');
     };
     // Wrapper AT: sanitiza titulo e celulas
     const AT=function(title,rows,cols){
@@ -3009,32 +3008,29 @@ function clearLoginMsg(){
 }
 
 async function doEmailLogin(){
-  // DIAGNOSTICO: confirma que a funcao foi chamada
-  const email = (q('liEmail')?.value||'').trim();
-  const pass  =  q('liPass')?.value||'';
-  
-  if(!AUTH){
-    alert('PROBLEMA: Firebase nao inicializou. AUTH e null.\nVerifica a consola do browser (F12).');
-    return;
-  }
-  if(!email||!pass){
-    alert('Preenche email e password.');
-    return;
-  }
-  
+  if(!AUTH){ setLoginErr('A carregar, aguarda...'); return; }
+  const email=(q('liEmail')?.value||'').trim();
+  const pass=q('liPass')?.value||'';
+  if(!email||!pass){ setLoginErr('Preenche email e password.'); return; }
   const btn=q('btnLogin');
   if(btn){btn.disabled=true;btn.textContent='A entrar...';}
-  
+  setLoginErr('');
   try{
     await AUTH.signInWithEmailAndPassword(email,pass);
-    // Se chegou aqui, o login correu bem
-    // onAuthStateChanged vai tratar do resto
   }catch(e){
     if(btn){btn.disabled=false;btn.textContent='Entrar';}
-    // Mostra o erro exacto via alert para garantir que es visto
-    alert('Erro de login:\n' + e.code + '\n' + e.message);
-    setLoginErr('Erro: ' + e.message);
-    console.error('Login error:', e.code, e.message);
+    const msgs={
+      'auth/user-not-found':'Email não encontrado.',
+      'auth/wrong-password':'Password incorrecta.',
+      'auth/invalid-email':'Email inválido.',
+      'auth/invalid-credential':'Email ou password incorrectos.',
+      'auth/too-many-requests':'Demasiadas tentativas. Aguarda.',
+      'auth/user-disabled':'Conta desactivada.',
+      'auth/operation-not-allowed':'Login por email não activado no Firebase.',
+      'auth/network-request-failed':'Sem ligação à internet.',
+    };
+    setLoginErr(msgs[e.code]||'Erro ('+e.code+'): '+e.message);
+    console.error('Login error:',e.code,e.message);
   }
 }
 
