@@ -438,11 +438,7 @@
       Os teus dados ficam guardados em segurança na cloud<br>e sincronizam em todos os dispositivos.
     </div>
 
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:center">
-      <button onclick="enterDirectMode()" style="background:transparent;border:none;color:var(--text2);font-size:12px;cursor:pointer;text-decoration:underline;font-family:inherit">
-        📂 Entrar sem internet (PIN local)
-      </button>
-    </div>
+
   </div>
 </div>
 
@@ -639,53 +635,6 @@ function blank(){
 
 // ─────────────────────────────────────────────────────────────
 //  FIREBASE — INIT & AUTH
-// ─────────────────────────────────────────────────────────────
-
-
-// ── ACESSO DIRECTO (bypass Firebase Auth) ──────────────────────
-// Usado quando Firebase não responde ou não está configurado
-function enterDirectMode(){
-  const PIN_KEY = 'propinvest_pin_hash';
-  const savedPin = localStorage.getItem(PIN_KEY);
-  
-  if(!savedPin){
-    // Primeira vez: define PIN
-    const pin = prompt('Cria o teu PIN de acesso (mínimo 4 caracteres):');
-    if(!pin || pin.length < 4){ 
-      alert('PIN inválido. Tenta novamente.');
-      return; 
-    }
-    const confirm = prompt('Confirma o PIN:');
-    if(pin !== confirm){ 
-      alert('PINs não coincidem. Tenta novamente.');
-      return; 
-    }
-    // Guarda hash simples do PIN
-    localStorage.setItem(PIN_KEY, btoa(pin + '_propinvest'));
-    enterApp();
-  } else {
-    // PIN já definido: pede PIN
-    const pin = prompt('Introduz o teu PIN:');
-    if(!pin){ return; }
-    if(btoa(pin + '_propinvest') === savedPin){
-      enterApp();
-    } else {
-      alert('PIN incorrecto.');
-    }
-  }
-}
-
-function enterApp(){
-  load();
-  document.getElementById('loginScreen').classList.add('hidden');
-  document.getElementById('app').style.display = 'flex';
-  const acts = document.getElementById('topActs');
-  if(acts) acts.innerHTML = `
-    <span style="font-size:10px;color:var(--muted);margin-right:4px">Local</span>
-    <button onclick="doLogout()" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">Sair</button>`;
-  checkShareLink();
-  nav('portfolio');
-}
 
 let FB=null,DB=null,AUTH=null,CURRENT_USER=null,SYNC_UNSUB=null;
 
@@ -3160,28 +3109,12 @@ document.addEventListener('DOMContentLoaded',()=>{
     ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
   });
 
-  // Arranque: tenta Firebase, fallback imediato para modo local
+  // Inicializa Firebase — mostra login ou app via onAuthStateChanged
   const firebaseReady = FIREBASE_CONFIG.apiKey !== 'SUBSTITUI_AQUI';
   if(firebaseReady){
-    // Inicia Firebase com timeout de segurança
-    let fbOk = false;
-    const fbTimeout = setTimeout(()=>{
-      if(!fbOk){ console.warn('[TIMEOUT] Firebase demorou demasiado, a entrar em modo local'); enterDirectMode(); }
-    }, 5000);
-    try{
-      initFirebase();
-      // initFirebase chama onAuthStateChanged que chama showApp ou showLoginScreen
-      // Se Firebase responder, cancela o timeout
-      const origOnAuth = AUTH?.onAuthStateChanged;
-      fbOk = true;
-      clearTimeout(fbTimeout);
-    }catch(e){
-      clearTimeout(fbTimeout);
-      console.warn('Firebase falhou:', e.message);
-      enterDirectMode();
-    }
+    initFirebase();
   } else {
-    enterDirectMode();
+    console.warn('Firebase não configurado.');
   }
 
   if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
