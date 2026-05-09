@@ -2538,15 +2538,20 @@ function exportPDF(){
     const T=s=>{
       if(typeof s!=='string')return String(s||'');
       return s
-        .replace(/à|á|â|ã|ä/g,'a').replace(/À|Á|Â|Ã|Ä/g,'A')
+        // Acentos portugueses -> ASCII
+        .replace(/[àáâãä]/g,'a').replace(/[ÀÁÂÃÄ]/g,'A')
         .replace(/ç/g,'c').replace(/Ç/g,'C')
-        .replace(/é|ê|è/g,'e').replace(/É|Ê|È/g,'E')
-        .replace(/í|ì|î/g,'i').replace(/Í|Ì|Î/g,'I')
-        .replace(/ó|ò|ô|õ/g,'o').replace(/Ó|Ò|Ô|Õ/g,'O')
-        .replace(/ú|ù|û/g,'u').replace(/Ú|Ù|Û/g,'U')
+        .replace(/[éêè]/g,'e').replace(/[ÉÊÈ]/g,'E')
+        .replace(/[íìî]/g,'i').replace(/[ÍÌÎ]/g,'I')
+        .replace(/[óòôõ]/g,'o').replace(/[ÓÒÔÕ]/g,'O')
+        .replace(/[úùû]/g,'u').replace(/[ÚÙÛ]/g,'U')
         .replace(/ñ/g,'n').replace(/Ñ/g,'N')
-        .replace(/—|–/g,'-').replace(/’/g,"'")
-        .replace(/[^ -ÿ]/g,'?');
+        // Pontuacao especial
+        .replace(/[—–]/g,'-').replace(/’/g,"'")
+        // Euro: preservar (jsPDF Helvetica suporta via Windows-1252)
+        // Remover apenas emojis e outros Unicode acima de Latin Extended
+        .replace(/[ -₫]/g,'').replace(/[₭- ]/g,'')
+        .replace(/€/g,'€'); // manter euro intacto
     };
     // ── HELPER: autoTable section ───────────────────────────────
     const AT=(title,rows,cols=['Rubrica','Valor'])=>{
@@ -2713,7 +2718,7 @@ function exportPDF(){
             const myTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
             const myPct=(myTotal/totalWrkProj*100).toFixed(1)+'%';
             // Linha de cabeçalho do investidor
-            obrasRows.push([`▶ ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
+            obrasRows.push([`>> ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
             // Linhas individuais
             myWorks.forEach(w=>{
               obrasRows.push([
