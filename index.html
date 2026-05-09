@@ -406,7 +406,7 @@
         <label class="flabel">Password</label>
         <input class="finput" id="liPass" type="password" placeholder="••••••••" autocomplete="current-password" />
       </div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px" onclick="doEmailLogin()">Entrar</button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px" id="btnLogin" onclick="doEmailLogin()">Entrar</button>
       <div style="text-align:center;margin-top:12px">
         <span style="font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline" onclick="doResetPassword()">Esqueci a password</span>
       </div>
@@ -650,53 +650,56 @@ let IS_ADMIN     = false;
 // é tratado como proprietário/admin desses dados.
 // Quem não tem dados próprios é investidor (só vê projetos partilhados).
 async function detectRoleAndLoad(user){
-  if(!DB){ showApp(user); startSync(); return; }
+  // PASSO 1: Mostra app imediatamente (nunca bloqueia)
+  IS_ADMIN     = true;
+  IS_READ_ONLY = false;
+  showApp(user);
+
+  // PASSO 2: Tenta determinar o papel (admin vs investidor) em background
+  if(!DB){ startSync(); return; }
 
   try{
-    // Verificar se tem dados próprios no Firestore
-    const ownRef = DB.collection('users').doc(user.uid)
-                     .collection('data').doc('propinvest');
+    // Tenta carregar dados próprios
+    const ownRef  = DB.collection('users').doc(user.uid)
+                      .collection('data').doc('propinvest');
     const ownSnap = await ownRef.get();
 
-    if(ownSnap.exists){
-      // TEM dados próprios → é admin/proprietário
-      IS_ADMIN     = true;
-      IS_READ_ONLY = false;
-      showApp(user);
+    if(ownSnap.exists || !user.email){
+      // Tem dados próprios OU não tem email: é admin
+      IS_ADMIN = true; IS_READ_ONLY = false;
       startSync();
-    } else {
-      // SEM dados próprios → verificar se tem projetos partilhados
+      return;
+    }
+
+    // Sem dados próprios: verifica projetos partilhados
+    try{
       const sharedSnap = await DB.collection('shared_projects')
         .where('allowedEmails','array-contains', user.email.toLowerCase())
         .get();
 
       if(!sharedSnap.empty){
-        // É investidor com projetos
-        IS_ADMIN     = false;
-        IS_READ_ONLY = true;
-        showApp(user);
+        IS_ADMIN = false; IS_READ_ONLY = true;
         showReadOnlyBanner();
         loadSharedFromSnap(sharedSnap);
         setSyncStatus('ok');
       } else {
-        // Novo utilizador — pode ser admin sem dados ainda
-        // Deixa entrar normalmente (primeira vez)
-        IS_ADMIN     = true;
-        IS_READ_ONLY = false;
-        showApp(user);
+        // Novo utilizador sem dados ainda: entra como admin
+        IS_ADMIN = true; IS_READ_ONLY = false;
         startSync();
       }
+    }catch(sharedErr){
+      // shared_projects falhou (sem regras ou sem dados): entra como admin
+      console.warn('shared_projects query failed:', sharedErr.message);
+      IS_ADMIN = true; IS_READ_ONLY = false;
+      startSync();
     }
   }catch(e){
-    // Em caso de erro, deixa entrar (fail-open para o proprietário)
-    console.warn('detectRoleAndLoad error:', e);
-    IS_ADMIN     = true;
-    IS_READ_ONLY = false;
-    showApp(user);
+    // Qualquer erro: entra como admin (fail-open)
+    console.warn('detectRoleAndLoad error:', e.message);
+    IS_ADMIN = true; IS_READ_ONLY = false;
     startSync();
   }
 }
-
 // ── CARREGAR PROJETOS PARTILHADOS (snapshot já resolvido) ────────
 function loadSharedFromSnap(snap){
   const projects = [];
@@ -919,7 +922,11 @@ function startSync(){
     }
   },err=>{
     setSyncStatus('offline');
-    console.warn('Sync error',err);
+    console.warn('Sync error',err.message);
+    // Firestore bloqueado: garante render com dados locais
+    if(!ST.projects){load();}
+    const ap2=document.querySelector('.nav-btn.active')?.dataset?.page||'portfolio';
+    if(!window._appEditing){renderPage(ap2);}
   });
 }
 
@@ -2302,7 +2309,7 @@ function bindFinanciamento(p){
     const hi=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);};
     const hc=()=>{s(p,parse(el.type==='checkbox'?el.checked:el.value));setP(p);renderDetail();};
     el.removeEventListener('input',el._fni);el._fni=hi;el.addEventListener('input',hi);
-    el.removeEventListener('change',el._fnc);el._fnc=hc;el.addEventListener('change',hc);    el.removeEventListener('input',el._hi);el._hi=h;el.addEventListener('input',h);
+    el.removeEventListener('change',el._fnc);el._fnc=hc;el.addEventListener('change',hc);
   };
   b('fn_use',(p,v)=>p.financingConfig.useFinancing=v);
   b('fn_loan',(p,v)=>p.financingConfig.loanAmount=Number(v||0),Number);
@@ -3200,16 +3207,24 @@ function clearLoginMsg(){
 async function doEmailLogin(){
   const email=q('liEmail')?.value?.trim(),pass=q('liPass')?.value;
   if(!email||!pass){setLoginErr('Preenche email e password.');return;}
+  const btn=q('btnLogin');
+  if(btn){btn.disabled=true;btn.textContent='A entrar...';}
+  clearLoginMsg();
   try{
     await AUTH.signInWithEmailAndPassword(email,pass);
+    // onAuthStateChanged trata do resto
   }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='Entrar';}
     const msgs={
       'auth/user-not-found':'Utilizador não encontrado.',
       'auth/wrong-password':'Password incorrecta.',
       'auth/invalid-email':'Email inválido.',
+      'auth/invalid-credential':'Email ou password incorrectos.',
       'auth/too-many-requests':'Muitas tentativas. Aguarda um momento.',
+      'auth/network-request-failed':'Sem ligação à internet.',
     };
-    setLoginErr(msgs[e.code]||'Erro ao entrar: '+e.message);
+    setLoginErr(msgs[e.code]||'Erro: '+e.code+' - '+e.message);
+    console.error('Login error:', e.code, e.message);
   }
 }
 
