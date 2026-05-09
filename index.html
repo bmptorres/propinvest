@@ -716,7 +716,12 @@ async function cloudSave(){
   setSyncStatus('syncing');
   try{
     await ref.set({...ST,_updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-    await syncSharedProjects(ST.projects);
+    try{
+      await syncSharedProjects(ST.projects);
+    }catch(shareErr){
+      console.warn('Project sharing sync failed',shareErr);
+      showToast('Dados guardados. Partilha exige regras Firebase atualizadas.');
+    }
     setSyncStatus('ok');
   }catch(e){
     setSyncStatus('offline');
@@ -728,14 +733,20 @@ function projectInvestorEmails(p){return [...new Set((p.investors||[]).map(i=>em
 async function syncSharedProjects(projects){
   if(!DB||!CURRENT_USER||isInvestorMode())return;
   const batch=DB.batch();
+  let writes=0;
+  const cleanup=[];
   (projects||[]).forEach(p=>{
     const emails=projectInvestorEmails(p);
     const ref=DB.collection('sharedProjects').doc(shareDocId(p.id));
     if(emails.length){
+      writes++;
       batch.set(ref,{ownerUid:CURRENT_USER.uid,ownerEmail:CURRENT_USER.email||'',projectId:p.id,projectName:p.name||'Projeto sem nome',investorEmails:emails,project:migrateP(p),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    }else batch.delete(ref);
+    }else{
+      cleanup.push(ref.delete().catch(e=>console.warn('Shared project cleanup skipped',e)));
+    }
   });
-  await batch.commit();
+  if(writes)await batch.commit();
+  if(cleanup.length)await Promise.all(cleanup);
 }
 async function deleteProjectShare(projectId){if(!DB||!CURRENT_USER||!projectId)return;try{await DB.collection('sharedProjects').doc(shareDocId(projectId)).delete();}catch(e){console.warn('Share delete failed',e);}}
 
@@ -796,23 +807,20 @@ function setSyncStatus(status){
   const b=document.getElementById('syncBadge');
   const l=document.getElementById('syncLabel');
   if(!b||!l)return;
+  clearTimeout(b._hideT);
   if(status==='ok'){
-    // Show briefly then hide
     b.style.display='inline-flex';
     b.className='sync-badge';
-    l.textContent='✓';
-    clearTimeout(b._hideT);
-    b._hideT=setTimeout(()=>b.style.display='none',2000);
+    l.textContent='Online';
+    b._hideT=setTimeout(()=>b.style.display='none',3500);
   } else if(status==='syncing'){
     b.style.display='inline-flex';
     b.className='sync-badge syncing';
-    l.textContent='Sync…';
-    clearTimeout(b._hideT);
+    l.textContent='A sincronizar...';
   } else {
     b.style.display='inline-flex';
     b.className='sync-badge offline';
     l.textContent='Offline';
-    clearTimeout(b._hideT);
   }
 }
 function AP(){return ST.projects.find(p=>p.id===ST.activeProjectId)||null;}
@@ -2568,18 +2576,49 @@ function rmCost(type,id){
 }
 
 // ─────────────────────────────────────────────────────────────
-function sendInvestorInvite(id){
+async function sendInvestorInvite(id){
   if(!requireOwner())return;
   const p=AP();if(!p)return;
   const inv=(p.investors||[]).find(i=>i.id===id);
   if(!inv||!inv.email){showToast('Adiciona o email do investidor primeiro.');return;}
   inv.inviteStatus='sent';inv.invitedAt=new Date().toISOString();setP(p);
-  syncSharedProjects([p]).catch(e=>console.warn('Share sync failed',e));
   const url=inviteUrlFor(p,inv.email);
-  showInviteModal(p,inv,url);
+  let emailStatus='manual';
+  try{
+    await syncSharedProjects([p]);
+    emailStatus=await queueInvestorInviteEmail(p,inv,url);
+  }catch(e){
+    console.warn('Invite automation failed',e);
+    emailStatus='error';
+  }
+  showInviteModal(p,inv,url,emailStatus);
 }
 
-function showInviteModal(p,inv,url){
+async function queueInvestorInviteEmail(p,inv,url){
+  if(!DB||!CURRENT_USER)return 'manual';
+  const subject=`Convite PropInvest - ${p.name||'Projeto'}`;
+  const text=`Ola ${inv.name||''},
+
+Foste convidado a consultar o projeto "${p.name||'Projeto'}" no PropInvest.
+
+Abre este link, cria conta com este email (${inv.email}) e define a tua password:
+${url}
+
+O acesso e apenas de visualizacao.`;
+  const html=`<p>Ola ${esc(inv.name||'')},</p><p>Foste convidado a consultar o projeto <strong>${esc(p.name||'Projeto')}</strong> no PropInvest.</p><p><a href="${esc(url)}">Abrir convite</a></p><p>Cria conta com este email: <strong>${esc(inv.email)}</strong>.</p><p>O acesso e apenas de visualizacao.</p>`;
+  await DB.collection('mail').add({
+    to:[inv.email],
+    message:{subject,text,html},
+    ownerUid:CURRENT_USER.uid,
+    ownerEmail:CURRENT_USER.email||'',
+    projectId:p.id,
+    investorEmail:inv.email,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  });
+  return 'queued';
+}
+
+function showInviteModal(p,inv,url,emailStatus='manual'){
   document.getElementById('inviteModal')?.remove();
   const subject=encodeURIComponent(`Convite PropInvest - ${p.name||'Projeto'}`);
   const rawBody=`Ola ${inv.name||''},
@@ -2590,6 +2629,11 @@ Abre este link, cria conta com este email (${inv.email}) e define a tua password
 ${url}
 
 O acesso e apenas de visualizacao.`;
+  const statusHtml=emailStatus==='queued'
+    ? `<div class="alert ok"><span>OK</span><span>Email colocado na fila de envio autom?tico para ${esc(inv.email)}.</span></div>`
+    : emailStatus==='error'
+      ? `<div class="alert warn"><span>!</span><span>Nao consegui enviar automaticamente. Copia o link ou usa Abrir email.</span></div>`
+      : `<div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. Copia o link ou abre o email.</span></div>`;
   const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${subject}&body=${encodeURIComponent(rawBody)}`;
   const ov=document.createElement('div');
   ov.className='ai-modal-overlay';
@@ -2600,7 +2644,7 @@ O acesso e apenas de visualizacao.`;
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inviteModal')?.remove()" style="font-size:18px;padding:4px 8px">x</button>
     </div>
     <div class="ai-modal-body">
-      <div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. O investidor deve criar conta com este mesmo email.</span></div>
+      ${statusHtml}
       <div class="fgrp" style="margin-top:12px">
         <label class="flabel">Link de convite</label>
         <textarea class="ftarea" id="inviteLink" readonly style="min-height:92px;font-family:monospace;font-size:12px">${esc(url)}</textarea>
@@ -2614,7 +2658,7 @@ O acesso e apenas de visualizacao.`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
   copyText(url);
-  showToast('Convite criado e link copiado.');
+  showToast(emailStatus==='queued'?'Email de convite preparado.':'Convite criado e link copiado.');
 }
 
 function copyText(txt){
@@ -3179,6 +3223,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   setOrient();
   window.addEventListener('resize',setOrient);
   window.addEventListener('orientationchange',()=>setTimeout(setOrient,100));
+  window.addEventListener('online',()=>setSyncStatus('ok'));
+  window.addEventListener('offline',()=>setSyncStatus('offline'));
 
   // Bottom nav
   document.querySelectorAll('.nav-btn').forEach(btn=>btn.onclick=()=>nav(btn.dataset.page));
