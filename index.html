@@ -3009,31 +3009,38 @@ function clearLoginMsg(){
 }
 
 async function doEmailLogin(){
-  if(!AUTH){ setLoginErr('Firebase não está pronto. Aguarda e tenta novamente.'); return; }
+  // Garante que Firebase está pronto
+  if(!AUTH){
+    alert('A aplicação ainda está a carregar. Aguarda 3 segundos e tenta novamente.');
+    return;
+  }
   const email = (q('liEmail')?.value||'').trim();
   const pass  =  q('liPass')?.value||'';
-  if(!email||!pass){ setLoginErr('Preenche email e password.'); return; }
-  const btn = q('btnLogin');
-  if(btn){ btn.disabled=true; btn.textContent='A entrar...'; }
+  if(!email||!pass){
+    setLoginErr('Preenche o email e a password.');
+    return;
+  }
+  const btn=q('btnLogin');
+  if(btn){btn.disabled=true;btn.textContent='A entrar...';}
   setLoginErr('');
   try{
-    await AUTH.signInWithEmailAndPassword(email, pass);
-    // Sucesso: onAuthStateChanged trata do resto automaticamente
+    await AUTH.signInWithEmailAndPassword(email,pass);
+    // Sucesso — onAuthStateChanged trata do resto
   }catch(e){
-    if(btn){ btn.disabled=false; btn.textContent='Entrar'; }
-    const msgs = {
-      'auth/user-not-found':     'Utilizador não encontrado. Verifica o email.',
-      'auth/wrong-password':     'Password incorrecta.',
-      'auth/invalid-email':      'Email inválido.',
-      'auth/invalid-credential': 'Email ou password incorrectos.',
-      'auth/too-many-requests':  'Muitas tentativas falhadas. Aguarda alguns minutos.',
-      'auth/user-disabled':      'Esta conta foi desactivada.',
-      'auth/network-request-failed': 'Sem ligação à internet.',
-      'auth/operation-not-allowed':  'Login por email não está activado no Firebase Console.',
+    if(btn){btn.disabled=false;btn.textContent='Entrar';}
+    const msgs={
+      'auth/user-not-found':    'Email não encontrado.',
+      'auth/wrong-password':    'Password incorrecta.',
+      'auth/invalid-email':     'Email inválido.',
+      'auth/invalid-credential':'Email ou password incorrectos.',
+      'auth/too-many-requests': 'Demasiadas tentativas. Aguarda.',
+      'auth/user-disabled':     'Conta desactivada.',
+      'auth/operation-not-allowed':'Login por email não está activado no Firebase.',
+      'auth/network-request-failed':'Sem ligação à internet.',
     };
-    const msg = msgs[e.code] || ('Erro (' + e.code + '): ' + e.message);
+    const msg=msgs[e.code]||('Erro ('+e.code+'): '+e.message);
     setLoginErr(msg);
-    console.error('Login error:', e.code, e.message);
+    console.error('Login error:',e.code,e.message);
   }
 }
 
@@ -3084,40 +3091,48 @@ async function doLogout(){
 //  INIT
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
-  // Verifica se o URL e um link de convite Firebase
-  checkEmailSignInLink();
-  // Orientation tracking
+  // Orientação
   function setOrient(){
-    const land=window.innerWidth>window.innerHeight;
-    document.getElementById('app').dataset.orient=land?'landscape':'portrait';
+    const el=document.getElementById('app');
+    if(el) el.dataset.orient=window.innerWidth>window.innerHeight?'landscape':'portrait';
   }
   setOrient();
   window.addEventListener('resize',setOrient);
   window.addEventListener('orientationchange',()=>setTimeout(setOrient,100));
 
-  // Bottom nav
-  document.querySelectorAll('.nav-btn').forEach(btn=>btn.onclick=()=>nav(btn.dataset.page));
-  // Sub tabs
-  document.querySelectorAll('.sub-tab').forEach(btn=>btn.onclick=()=>setSub(btn.dataset.sub));
-  // Button bindings
-  q('btnNew').onclick=openNewProject;
-  q('btnCreateProject').onclick=createProject;
-  q('btnSaveInvestor').onclick=saveInvestor;
-  q('btnSaveCost').onclick=saveCost;
-  // Close on overlay click
+  // Navegação
+  document.querySelectorAll('.nav-btn').forEach(btn=>{
+    btn.onclick=()=>nav(btn.dataset.page);
+  });
+  document.querySelectorAll('.sub-tab').forEach(btn=>{
+    btn.onclick=()=>setSub(btn.dataset.sub);
+  });
+
+  // Botões — com null check para não crashar
+  const btnNew=q('btnNew'); if(btnNew) btnNew.onclick=openNewProject;
+  const btnCP=q('btnCreateProject'); if(btnCP) btnCP.onclick=createProject;
+  const btnSI=q('btnSaveInvestor'); if(btnSI) btnSI.onclick=saveInvestor;
+  const btnSC=q('btnSaveCost'); if(btnSC) btnSC.onclick=saveCost;
+
+  // Fechar modais ao clicar fora
   document.querySelectorAll('.modal-ov').forEach(ov=>{
     ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
   });
 
-  // Inicializa Firebase — mostra login ou app via onAuthStateChanged
-  const firebaseReady = FIREBASE_CONFIG.apiKey !== 'SUBSTITUI_AQUI';
-  if(firebaseReady){
-    initFirebase();
-  } else {
-    console.warn('Firebase não configurado.');
+  // Firebase — inicializa SEMPRE se config estiver definida
+  if(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey!=='SUBSTITUI_AQUI'){
+    try{
+      initFirebase();
+    }catch(err){
+      console.error('Erro ao iniciar Firebase:',err);
+      setLoginErr('Erro ao iniciar: '+err.message);
+    }
   }
 
-  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  // Service Worker
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }
 });
 
 // Show delete button only when project is active and not on portfolio
