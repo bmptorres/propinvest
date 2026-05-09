@@ -2584,7 +2584,7 @@ function sendInvestorInvite(id){
   inv.inviteStatus='sent';inv.invitedAt=new Date().toISOString();setP(p);
   const url=inviteUrlFor(p,inv.email);
   showInviteModal(p,inv,url,'manual');
-  openInviteEmail();
+  openInviteGmail();
   syncSharedProjects([p]).catch(e=>{
     console.warn('Invite sharing failed',e);
     showToast('Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.');
@@ -2592,7 +2592,7 @@ function sendInvestorInvite(id){
 }
 function showInviteModal(p,inv,url,emailStatus='manual'){
   document.getElementById('inviteModal')?.remove();
-  const subject=encodeURIComponent(`Convite PropInvest - ${p.name||'Projeto'}`);
+  const subjectRaw=`Convite PropInvest - ${p.name||'Projeto'}`;
   const rawBody=`Ola ${inv.name||''},
 
 Foste convidado a consultar o projeto "${p.name||'Projeto'}" no PropInvest.
@@ -2603,8 +2603,11 @@ ${url}
 O acesso e apenas de visualizacao.`;
   const statusHtml=emailStatus==='shareError'
     ? `<div class="alert warn"><span>!</span><span>Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.</span></div>`
-    : `<div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. O email vai abrir preenchido e o link foi copiado.</span></div>`;  const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${subject}&body=${encodeURIComponent(rawBody)}`;
+    : `<div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. O Gmail vai abrir preenchido e o link foi copiado.</span></div>`;
+  const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${encodeURIComponent(subjectRaw)}&body=${encodeURIComponent(rawBody)}`;
+  const gmail=`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(inv.email)}&su=${encodeURIComponent(subjectRaw)}&body=${encodeURIComponent(rawBody)}`;
   window.INVITE_MAILTO=mailto;
+  window.INVITE_GMAIL=gmail;
   const ov=document.createElement('div');
   ov.className='ai-modal-overlay';
   ov.id='inviteModal';
@@ -2620,19 +2623,24 @@ O acesso e apenas de visualizacao.`;
         <textarea class="ftarea" id="inviteLink" readonly style="min-height:92px;font-family:monospace;font-size:12px">${esc(url)}</textarea>
       </div>
       <div class="m-actions" style="margin-top:14px">
-        <button class="btn btn-primary" onclick="copyInviteLink()">Copiar link</button>
-        <button class="btn btn-secondary" onclick="openInviteEmail()">Abrir email</button>
+        <button class="btn btn-primary" onclick="openInviteGmail()">Abrir Gmail</button>
+        <button class="btn btn-secondary" onclick="copyInviteLink()">Copiar link</button>
+        <button class="btn btn-secondary" onclick="openInviteEmail()">Email do computador</button>
       </div>
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
   copyText(url);
-  showToast('Convite criado, link copiado e email preparado.');
+  showToast('Convite criado, link copiado e Gmail preparado.');
 }
 
+function openInviteGmail(){
+  if(!window.INVITE_GMAIL)return;
+  const w=window.open(window.INVITE_GMAIL,'_blank','noopener');
+  if(!w)window.location.href=window.INVITE_GMAIL;
+}
 function openInviteEmail(){if(window.INVITE_MAILTO)window.location.href=window.INVITE_MAILTO;}
-
 function copyText(txt){
   if(navigator.clipboard&&location.protocol!=='file:')return navigator.clipboard.writeText(txt).catch(()=>{});
   const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}ta.remove();
