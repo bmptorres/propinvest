@@ -591,6 +591,9 @@ const FIREBASE_CONFIG = {
 //  CONSTANTS & UTILS
 // ─────────────────────────────────────────────────────────────
 const SK='propinvest_v3';
+// Cola aqui o URL da Web App do Google Apps Script para ativar o envio confirmado de convites.
+// Enquanto estiver vazio, o @ continua a gerar apenas o texto/link para copiar manualmente.
+const INVITE_SCRIPT_URL='';
 const ICOLORS=['#f59e0b','#3b82f6','#10b981','#8b5cf6','#ef4444','#06b6d4','#f97316','#ec4899'];
 const STRATEGIES=['Flip','Buy-to-let','BRRRR','Mista'];
 const ROLES=['Promotor','Capital','Operacional','Misto'];
@@ -613,6 +616,22 @@ function activePageName(){return document.querySelector('.nav-btn.active')?.data
 function setAppRole(role){APP_ROLE=role||'owner';document.body.dataset.role=APP_ROLE;renderTopActions();}
 function hasInviteContext(){return new URLSearchParams(location.search).has('invite');}
 function inviteUrlFor(p,email){const u=new URL(location.href);u.hash='';u.search='';u.searchParams.set('invite',emailKey(email));u.searchParams.set('project',p?.id||'');return u.toString();}
+function inviteScriptUrlFor(){
+  if(!INVITE_SCRIPT_URL)return '';
+  const u=new URL(INVITE_SCRIPT_URL);
+  u.searchParams.set('to',window.INVITE_TO||'');
+  u.searchParams.set('subject',window.INVITE_SUBJECT||'');
+  u.searchParams.set('message',window.INVITE_MESSAGE||'');
+  u.searchParams.set('link',window.INVITE_LINK||'');
+  u.searchParams.set('project',window.INVITE_PROJECT||'');
+  return u.toString();
+}
+function openInviteScript(){
+  const url=inviteScriptUrlFor();
+  if(!url){showToast('Configura primeiro o URL do Google Apps Script no index.html.');return;}
+  const w=window.open(url,'_blank','noopener');
+  if(!w)window.location.href=url;
+}
 function applyModeUI(page){
   document.body.dataset.role=APP_ROLE;
   const app=q('app');if(!app)return;
@@ -2584,34 +2603,45 @@ function sendInvestorInvite(id){
   inv.inviteStatus='sent';inv.invitedAt=new Date().toISOString();setP(p);
   const url=inviteUrlFor(p,inv.email);
   showInviteModal(p,inv,url,'manual');
-  openInviteGmail();
   syncSharedProjects([p]).catch(e=>{
     console.warn('Invite sharing failed',e);
-    showToast('Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.');
+    showToast('Convite gerado. Confirma as regras Firebase se a partilha nao aparecer.');
   });
 }
 function showInviteModal(p,inv,url,emailStatus='manual'){
   document.getElementById('inviteModal')?.remove();
-  const subjectRaw=`Convite PropInvest - ${p.name||'Projeto'}`;
-  const rawBody=`Ola ${inv.name||''},
+  const investorName=(inv.name||'Investidor').trim();
+  const projectName=p.name||'Projeto';
+  const subjectRaw=`Convite PropInvest - ${projectName}`;
+  const messageRaw=`Ola ${investorName},
 
-Foste convidado a consultar o projeto "${p.name||'Projeto'}" no PropInvest.
+Foste convidado a consultar o projeto "${projectName}" no PropInvest.
 
-Abre este link, cria conta com este email (${inv.email}) e define a tua password:
+Para aceder, abre este link:
 ${url}
 
+Cria conta com este email: ${inv.email}
+Depois define a tua password.
+
 O acesso e apenas de visualizacao.`;
+  const fullRaw=`Para: ${inv.email}
+Assunto: ${subjectRaw}
+
+${messageRaw}`;
+  window.INVITE_TO=inv.email;
+  window.INVITE_SUBJECT=subjectRaw;
+  window.INVITE_MESSAGE=messageRaw;
+  window.INVITE_LINK=url;
+  window.INVITE_FULL=fullRaw;
   const statusHtml=emailStatus==='shareError'
     ? `<div class="alert warn"><span>!</span><span>Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.</span></div>`
-    : `<div class="alert ok"><span>OK</span><span>Projeto partilhado com ${esc(inv.email)}. O Gmail vai abrir preenchido e o link foi copiado.</span></div>`;
-  const mailto=`mailto:${encodeURIComponent(inv.email)}?subject=${encodeURIComponent(subjectRaw)}&body=${encodeURIComponent(rawBody)}`;
-  const gmail=`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(inv.email)}&su=${encodeURIComponent(subjectRaw)}&body=${encodeURIComponent(rawBody)}`;
-  window.INVITE_MAILTO=mailto;
-  window.INVITE_GMAIL=gmail;
+    : INVITE_SCRIPT_URL
+      ? `<div class="alert ok"><span>OK</span><span>Convite pronto para ${esc(inv.email)}. Carrega em Enviar pelo Google e confirma o envio.</span></div>`
+      : `<div class="alert ok"><span>OK</span><span>Convite gerado para ${esc(inv.email)}. Copia o texto e cola no teu email.</span></div>`;
   const ov=document.createElement('div');
   ov.className='ai-modal-overlay';
   ov.id='inviteModal';
-  ov.innerHTML=`<div class="ai-modal" style="max-height:62dvh">
+  ov.innerHTML=`<div class="ai-modal" style="max-height:78dvh">
     <div class="ai-modal-header">
       <div class="ai-modal-title">Convite do investidor</div>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inviteModal')?.remove()" style="font-size:18px;padding:4px 8px">x</button>
@@ -2619,34 +2649,41 @@ O acesso e apenas de visualizacao.`;
     <div class="ai-modal-body">
       ${statusHtml}
       <div class="fgrp" style="margin-top:12px">
+        <label class="flabel">Email do investidor</label>
+        <input class="finput" id="inviteTo" readonly value="${esc(inv.email)}">
+      </div>
+      <div class="fgrp" style="margin-top:12px">
+        <label class="flabel">Assunto</label>
+        <input class="finput" id="inviteSubject" readonly value="${esc(subjectRaw)}">
+      </div>
+      <div class="fgrp" style="margin-top:12px">
+        <label class="flabel">Mensagem pronta para copiar</label>
+        <textarea class="ftarea" id="inviteMessage" readonly style="min-height:190px;font-family:inherit;font-size:14px;line-height:1.45">${esc(messageRaw)}</textarea>
+      </div>
+      <div class="fgrp" style="margin-top:12px">
         <label class="flabel">Link de convite</label>
-        <textarea class="ftarea" id="inviteLink" readonly style="min-height:92px;font-family:monospace;font-size:12px">${esc(url)}</textarea>
+        <textarea class="ftarea" id="inviteLink" readonly style="min-height:70px;font-family:monospace;font-size:12px">${esc(url)}</textarea>
       </div>
       <div class="m-actions" style="margin-top:14px">
-        <button class="btn btn-primary" onclick="openInviteGmail()">Abrir Gmail</button>
+        ${INVITE_SCRIPT_URL?'<button class="btn btn-primary" onclick="openInviteScript()">Enviar pelo Google</button>':'<button class="btn btn-primary" onclick="copyInviteAll()">Copiar tudo</button>'}
+        <button class="btn btn-secondary" onclick="copyInviteMessage()">Copiar mensagem</button>
         <button class="btn btn-secondary" onclick="copyInviteLink()">Copiar link</button>
-        <button class="btn btn-secondary" onclick="openInviteEmail()">Email do computador</button>
       </div>
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
-  copyText(url);
-  showToast('Convite criado, link copiado e Gmail preparado.');
+  copyText(fullRaw);
+  showToast(INVITE_SCRIPT_URL?'Convite pronto para confirmar no Google.':'Convite pronto e texto copiado.');
 }
 
-function openInviteGmail(){
-  if(!window.INVITE_GMAIL)return;
-  const w=window.open(window.INVITE_GMAIL,'_blank','noopener');
-  if(!w)window.location.href=window.INVITE_GMAIL;
-}
-function openInviteEmail(){if(window.INVITE_MAILTO)window.location.href=window.INVITE_MAILTO;}
 function copyText(txt){
   if(navigator.clipboard&&location.protocol!=='file:')return navigator.clipboard.writeText(txt).catch(()=>{});
   const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}ta.remove();
 }
-function copyInviteLink(){const el=q('inviteLink');if(!el)return;copyText(el.value);showToast('Link copiado.');}
-
+function copyInviteAll(){copyText(window.INVITE_FULL||'');showToast('Convite completo copiado.');}
+function copyInviteMessage(){copyText(window.INVITE_MESSAGE||'');showToast('Mensagem copiada.');}
+function copyInviteLink(){const el=q('inviteLink');const txt=el?el.value:(window.INVITE_LINK||'');copyText(txt);showToast('Link copiado.');}
 //  PDF EXPORT — TESSA ADVISORS
 // ─────────────────────────────────────────────────────────────
 function exportPDF(){
