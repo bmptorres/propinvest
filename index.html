@@ -641,25 +641,34 @@ let FB=null,DB=null,AUTH=null,CURRENT_USER=null,SYNC_UNSUB=null;
 function initFirebase(){
   try{
     if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-    FB=firebase.app();
-    AUTH=firebase.auth();
-    DB=firebase.firestore();
-    DB.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+    FB   = firebase.app();
+    AUTH = firebase.auth();
+    DB   = firebase.firestore();
+    // Persistência offline
+    DB.enablePersistence({synchronizeTabs:true}).catch(e=>{
+      if(e.code!=='failed-precondition'&&e.code!=='unimplemented')
+        console.warn('Persistence:',e.code);
+    });
+    // Listener de autenticação
     AUTH.onAuthStateChanged(user=>{
       if(user){
-        CURRENT_USER=user;
+        CURRENT_USER = user;
         showApp(user);
         startSync();
-      }else{
-        CURRENT_USER=null;
+      } else {
+        CURRENT_USER = null;
         stopSync();
         showLoginScreen();
       }
+    }, err=>{
+      console.error('Auth state error:', err);
+      showLoginScreen();
     });
-    return true;
   }catch(e){
-    console.warn('Firebase init failed, using localStorage',e);
-    return false;
+    console.error('Firebase init error:', e);
+    // Mostra erro na tela de login
+    const el = document.getElementById('loginErr');
+    if(el) el.textContent = 'Erro Firebase: ' + e.message;
   }
 }
 function userDocRef(){
@@ -3000,25 +3009,30 @@ function clearLoginMsg(){
 }
 
 async function doEmailLogin(){
-  const email=q('liEmail')?.value?.trim(),pass=q('liPass')?.value;
-  if(!email||!pass){setLoginErr('Preenche email e password.');return;}
-  const btn=q('btnLogin');
-  if(btn){btn.disabled=true;btn.textContent='A entrar...';}
-  clearLoginMsg();
+  if(!AUTH){ setLoginErr('Firebase não está pronto. Aguarda e tenta novamente.'); return; }
+  const email = (q('liEmail')?.value||'').trim();
+  const pass  =  q('liPass')?.value||'';
+  if(!email||!pass){ setLoginErr('Preenche email e password.'); return; }
+  const btn = q('btnLogin');
+  if(btn){ btn.disabled=true; btn.textContent='A entrar...'; }
+  setLoginErr('');
   try{
-    await AUTH.signInWithEmailAndPassword(email,pass);
-    // onAuthStateChanged trata do resto
+    await AUTH.signInWithEmailAndPassword(email, pass);
+    // Sucesso: onAuthStateChanged trata do resto automaticamente
   }catch(e){
-    if(btn){btn.disabled=false;btn.textContent='Entrar';}
-    const msgs={
-      'auth/user-not-found':'Utilizador não encontrado.',
-      'auth/wrong-password':'Password incorrecta.',
-      'auth/invalid-email':'Email inválido.',
-      'auth/invalid-credential':'Email ou password incorrectos.',
-      'auth/too-many-requests':'Muitas tentativas. Aguarda um momento.',
-      'auth/network-request-failed':'Sem ligação à internet.',
+    if(btn){ btn.disabled=false; btn.textContent='Entrar'; }
+    const msgs = {
+      'auth/user-not-found':     'Utilizador não encontrado. Verifica o email.',
+      'auth/wrong-password':     'Password incorrecta.',
+      'auth/invalid-email':      'Email inválido.',
+      'auth/invalid-credential': 'Email ou password incorrectos.',
+      'auth/too-many-requests':  'Muitas tentativas falhadas. Aguarda alguns minutos.',
+      'auth/user-disabled':      'Esta conta foi desactivada.',
+      'auth/network-request-failed': 'Sem ligação à internet.',
+      'auth/operation-not-allowed':  'Login por email não está activado no Firebase Console.',
     };
-    setLoginErr(msgs[e.code]||'Erro: '+e.code+' - '+e.message);
+    const msg = msgs[e.code] || ('Erro (' + e.code + '): ' + e.message);
+    setLoginErr(msg);
     console.error('Login error:', e.code, e.message);
   }
 }
