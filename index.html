@@ -571,16 +571,6 @@ const FIREBASE_CONFIG = {
 //     match /users/{userId}/{document=**} {
 //       allow read, write: if request.auth != null && request.auth.uid == userId;
 //     }
-//
-//     // Partilhas públicas: leitura apenas se o relatório estiver marcado como público.
-//     // Escrita/edição/remoção apenas pelo dono autenticado.
-//     match /shared_reports/{shareId} {
-//       allow read: if resource.data.isPublic == true;
-//       allow create: if request.auth != null
-//                     && request.resource.data.ownerUid == request.auth.uid;
-//       allow update, delete: if request.auth != null
-//                             && resource.data.ownerUid == request.auth.uid;
-//     }
 //   }
 // }
 
@@ -600,56 +590,6 @@ const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
 const q=id=>document.getElementById(id);
 const r2=n=>Math.round((Number(n||0)+Number.EPSILON)*100)/100;
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-function calcMonthlyPayment(principal,annualRatePct,termYears){
-  principal=Number(principal||0);
-  const months=Math.max(0,Math.round(Number(termYears||0)*12));
-  if(principal<=0||months<=0)return 0;
-  const monthlyRate=(Number(annualRatePct||0)/100)/12;
-  if(monthlyRate<=0)return r2(principal/months);
-  return r2(principal*(monthlyRate*Math.pow(1+monthlyRate,months))/(Math.pow(1+monthlyRate,months)-1));
-}
-function calcLoanHolding(principal,annualRatePct,termYears,holdMonths){
-  principal=Number(principal||0);
-  const months=Math.max(0,Math.round(Number(termYears||0)*12));
-  const hold=Math.max(0,Math.round(Number(holdMonths||0)));
-  if(principal<=0||months<=0||hold<=0)return{monthlyPayment:calcMonthlyPayment(principal,annualRatePct,termYears),interestPaid:0,principalPaid:0,totalDebtService:0,remainingBalance:Math.max(0,r2(principal)),monthsElapsed:0};
-  const monthlyRate=(Number(annualRatePct||0)/100)/12;
-  const payment=calcMonthlyPayment(principal,annualRatePct,termYears);
-  let balance=principal,interestPaid=0,principalPaid=0,totalDebtService=0,elapsed=0;
-  for(let m=0;m<Math.min(hold,months)&&balance>0.0001;m++){
-    const interest=monthlyRate>0?balance*monthlyRate:0;
-    let principalPart=payment-interest;
-    if(monthlyRate<=0)principalPart=Math.min(payment,balance);
-    if(principalPart<0)principalPart=0;
-    if(principalPart>balance)principalPart=balance;
-    const installment=interest+principalPart;
-    interestPaid+=interest;
-    principalPaid+=principalPart;
-    totalDebtService+=installment;
-    balance=Math.max(0,balance-principalPart);
-    elapsed++;
-  }
-  return{
-    monthlyPayment:payment,
-    interestPaid:r2(interestPaid),
-    principalPaid:r2(principalPaid),
-    totalDebtService:r2(totalDebtService),
-    remainingBalance:r2(balance),
-    monthsElapsed:elapsed
-  };
-}
-function calcSaleCosts(p,saleRef){
-  const sale=Number(saleRef||0);
-  const cfg=p?.saleConfig||{};
-  const basePct=Number(cfg.brokerCommissionPct||0);
-  const vatPct=Number(cfg.brokerCommissionVatPct??23);
-  const commissionBase=r2(sale*(basePct/100));
-  const commissionVat=r2(commissionBase*(vatPct/100));
-  const commissionTotal=r2(commissionBase+commissionVat);
-  const otherSaleCosts=r2(Number(cfg.otherSaleCosts||0));
-  const saleNet=r2(sale-commissionTotal-otherSaleCosts);
-  return{commissionBase,commissionVat,commissionTotal,otherSaleCosts,saleNet,basePct,vatPct};
-}
 
 // ─────────────────────────────────────────────────────────────
 //  STATE
@@ -678,7 +618,7 @@ function blank(){
     expectedSalePrice:0,actualSalePrice:0,saleDate:'',expectedMonthlyRent:0,notes:'',
     acquisitionConfig:{region:'continente',propertyCategory:'hpp',imtYoung:false,registryActsCount:2,permanentCertificateMode:'online'},
     acquisitionManual:{appraisalFee:0,bankOpeningFee:0,legalFees:0,otherClosingCosts:0},
-    saleConfig:{brokerCommissionPct:5,brokerCommissionVatPct:23,otherSaleCosts:0},
+    saleConfig:{brokerCommissionPct:5,otherSaleCosts:0},
     fiscalConfig:{capitalGainInclusionPct:50,manualTaxOverride:0,fiscalNotes:''},
     marketConfig:{baselineMarketPsm:0,comparableCount:0,marketTrendPct:0,conditionLevel:'medio',renovationLevel:'integral',hasPool:false,hasGarage:false,hasGarden:false,hasTerrace:false,hasElevator:false},
     financingConfig:{useFinancing:false,loanAmount:0,interestRatePct:3.5,termYears:25,entryFeePct:1},
@@ -827,7 +767,6 @@ function migrateP(p){
   proj.acquisitionConfig={...bp.acquisitionConfig,...(p.acquisitionConfig||{})};
   proj.acquisitionManual={...bp.acquisitionManual,...(p.acquisitionManual||{})};
   proj.saleConfig={...bp.saleConfig,...(p.saleConfig||{})};
-  if(proj.saleConfig.brokerCommissionVatPct==null)proj.saleConfig.brokerCommissionVatPct=23;
   proj.fiscalConfig={...bp.fiscalConfig,...(p.fiscalConfig||{})};
   proj.marketConfig={...bp.marketConfig,...(p.marketConfig||{})};
   proj.financingConfig={...bp.financingConfig,...(p.financingConfig||{})};
@@ -905,11 +844,14 @@ function analyze(p){
   const fc=p.financingConfig||{};
   const useFinancing=!!fc.useFinancing;
   const loanAmt=Number(fc.loanAmount||0);
-  const annualRatePct=Number(fc.interestRatePct||3.5);
-  const termYears=Number(fc.termYears||25);
+  const annualRate=Number(fc.interestRatePct||3.5)/100;
+  const termMonths=Number(fc.termYears||25)*12;
+  const monthlyRate=annualRate/12;
   const entryFee=loanAmt*Number(fc.entryFeePct||1)/100;
-  const loanHold=useFinancing?calcLoanHolding(loanAmt,annualRatePct,termYears,Number((p.holdingConfig||{}).durationMonths||6)):calcLoanHolding(0,0,0,0);
-  const monthlyPayment=loanHold.monthlyPayment;
+  // PMT formula: monthly payment
+  const monthlyPayment=loanAmt>0&&monthlyRate>0
+    ?r2(loanAmt*(monthlyRate*Math.pow(1+monthlyRate,termMonths))/(Math.pow(1+monthlyRate,termMonths)-1))
+    :0;
   const equityInvested=useFinancing?Math.max(0,Number(p.purchasePrice||0)-loanAmt+entryFee):0;
 
   // ── HOLDING COSTS ENGINE ─────────────────────────────────
@@ -919,18 +861,13 @@ function analyze(p){
   const imiRate=Number(hc.imiRate||0.003);
   const imiAnnual=r2(Math.max(Number(p.purchasePrice||0),Number(p.vpt||0))*imiRate);
   const imiHolding=r2(imiAnnual*(holdMonths/12));
-  const financingInterestHolding=useFinancing?loanHold.interestPaid:0;
-  const financingPrincipalHolding=useFinancing?loanHold.principalPaid:0;
-  const remainingLoanBalance=useFinancing?loanHold.remainingBalance:0;
+  const financingInterestHolding=useFinancing?r2(monthlyPayment*holdMonths):0;
   const fixedHolding=r2(monthlyFixed*holdMonths);
   const holdingTotal=r2(imiHolding+fixedHolding+(useFinancing?financingInterestHolding:0));
   const saleRef=Number(p.actualSalePrice||0)>0?Number(p.actualSalePrice||0):Number(p.expectedSalePrice||0);
-  const saleCosts=calcSaleCosts(p,saleRef);
-  const amiBase=saleCosts.commissionBase;
-  const amiVat=saleCosts.commissionVat;
-  const ami=saleCosts.commissionTotal;
-  const saleOth=saleCosts.otherSaleCosts;
-  const saleNet=saleCosts.saleNet;
+  const ami=saleRef*(Number(p.saleConfig.brokerCommissionPct||0)/100);
+  const saleOth=Number(p.saleConfig.otherSaleCosts||0);
+  const saleNet=saleRef-ami-saleOth;
   const ldg=ledger(p);
   const capTotal=sum(ldg,x=>x.tot);
   const profit=saleNet-capTotal;
@@ -1004,7 +941,7 @@ function analyze(p){
     btlProjection.push({yr,propValue:propValBtl,yrCf,cumCashflow:cumCFbtl});
   }
   const btl={grossRentMonthly,grossRentAnnual,expensesMonthly,cashflowMonthly,cashflowAnnual,taxRentAnnual,netCashflowAnnual,grossYield,netYield,paybackYears,btlProjection,imiAnnualBtl,manutAnnual,btlRent,btlOcc};
-return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,amiBase,amiVat,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,financingPrincipalHolding,remainingLoanBalance,holdMonths,useFinancing,btl};
+return{lg,acqManual,acqAll,wrkTotal,othTotal,saleRef,ami,saleOth,saleNet,ldg,capTotal,profit,taxableGain,inclusionPct,taxTotal,netProfit,netFinal,psm,ssm,roi,roiNet,specs,suppliers,mkt,warns,invRes,splitSum,manualTax,monthlyPayment,loanAmt,equityInvested,entryFee,holdingTotal,imiHolding,fixedHolding,financingInterestHolding,holdMonths,useFinancing,btl};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1249,9 +1186,8 @@ function renderDash(p,a){
       ].map(sc=>{
         const newSale=a.saleRef*(1+sc.saleD/100);
         const newObra=a.wrkTotal*(1+sc.obraD/100);
-        const newSaleCosts=calcSaleCosts(p,newSale);
-        const newAmi=newSaleCosts.commissionTotal;
-        const newSaleNet=newSaleCosts.saleNet;
+        const newAmi=newSale*(Number(p.saleConfig?.brokerCommissionPct||5)/100);
+        const newSaleNet=newSale-newAmi-(a.saleOth||0);
         const newCap=a.capTotal-a.wrkTotal+newObra;
         const newProfit=newSaleNet-newCap;
         const newTax=Math.max(0,newProfit)*(a.inclusionPct||0.5)*0.28;
@@ -1508,17 +1444,14 @@ function tabVenda(p,a){
       <div class="fgrp"><label class="flabel">Venda Esperada (€)<span style="font-size:9px;font-weight:400;color:var(--blue);display:block;margin-top:1px">🔗 Também editável em Dados Gerais</span></label><input class="finput" id="sl_esale" type="number" value="${esc(String(p.expectedSalePrice??''))}" /></div>
       ${fi('sl_asale','Venda real (€)',p.actualSalePrice,'number')}
       ${fi('sl_date','Data de venda',p.saleDate,'date')}
-      ${fi('sl_ami','Comissão AMI base (%)',p.saleConfig.brokerCommissionPct,'number')}
-      ${fi('sl_ami_vat','IVA comissão AMI (%)',p.saleConfig.brokerCommissionVatPct,'number')}
+      ${fi('sl_ami','Comissão AMI (%)',p.saleConfig.brokerCommissionPct,'number')}
       ${fi('sl_oth','Outros custos venda (€)',p.saleConfig.otherSaleCosts,'number')}
     </div>
   </div>
   <div class="card">
     <div class="card-head"><div class="card-title">Apuramento de Saída</div><span class="auto-badge">🔒 Auto</span></div>
     ${mt('Referência de venda',eur(a?a.saleRef:0))}
-    ${mt('Comissão AMI base',eur(a?a.amiBase:0),'c-r')}
-    ${mt('IVA comissão AMI',eur(a?a.amiVat:0),'c-r')}
-    ${mt('Comissão AMI total',eur(a?a.ami:0),'c-r')}
+    ${mt('Comissão AMI',eur(a?a.ami:0),'c-r')}
     ${mt('Outros custos de venda',eur(a?a.saleOth:0),'c-r')}
     ${mt('Venda líquida',eur(a?a.saleNet:0),'c-g')}
     ${mt('Venda por m²',eur(a?a.ssm:0),'c-a')}
@@ -1639,7 +1572,7 @@ function tabFinanciamento(p,a){
     </div>
     ${mt('Montante financiado',eur(a.loanAmt),'c-b')}
     ${mt('Comissão de entrada',eur(a.entryFee),'c-r')}
-    ${mt('Juros financiamento durante obra ('+a.holdMonths+' meses)',eur(a.financingInterestHolding),'c-r')}
+    ${mt('Custo financeiro durante obra ('+a.holdMonths+' meses)',eur(a.financingInterestHolding),'c-r')}
     <div class="alert warn" style="margin-top:10px"><span>ℹ️</span><span>Cash-on-Cash Return = retorno sobre o capital próprio. Com alavancagem, tipicamente superior ao ROI total.</span></div>
   </div>`:`<div class="card"><div class="alert warn"><span>💡</span><span>Activa o financiamento bancário para ver a análise de alavancagem e cash-on-cash return.</span></div></div>`}
   <div class="card">
@@ -1658,7 +1591,7 @@ function tabFinanciamento(p,a){
     ${mt('Duração estimada',a.holdMonths+' meses')}
     ${mt('IMI proporcional',eur(a.imiHolding),'c-r')}
     ${mt('Outros custos fixos acumulados',eur(a.fixedHolding),'c-r')}
-    ${useF?mt('Juros financiamento durante obra',eur(a.financingInterestHolding),'c-r'):''}${useF?mt('Amortização capital durante obra',eur(a.financingPrincipalHolding||0),'c-b'):''}
+    ${useF?mt('Juros financiamento durante obra',eur(a.financingInterestHolding),'c-r'):''}
     <div style="margin-top:10px;padding:12px 14px;background:var(--bad-dim);border-radius:11px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;font-weight:700;color:var(--text2)">Total Holding Costs</span>
       <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(15px,4vw,20px);color:var(--bad);word-break:break-all">${eur(a.holdingTotal)}</span>
@@ -1788,9 +1721,8 @@ function updateCenarios(){
   // Simulate changes
   const newSale=a.saleRef*(1+scSale/100);
   const newObra=a.wrkTotal*(1+scObra/100);
-  const newSaleCosts=calcSaleCosts(p,newSale);
-  const newAmi=newSaleCosts.commissionTotal;
-  const newSaleNet=newSaleCosts.saleNet;
+  const newAmi=newSale*(Number(p.saleConfig?.brokerCommissionPct||5)/100);
+  const newSaleNet=newSale-newAmi-(a.saleOth||0);
   const newCapTotal=a.capTotal-a.wrkTotal+newObra;
   const newProfit=newSaleNet-newCapTotal;
   const newTax=Math.max(0,newProfit)*(a.inclusionPct||0.5)*0.28;
@@ -1800,9 +1732,7 @@ function updateCenarios(){
   // Extra holding cost for time
   const hc=p.holdingConfig||{};
   const imiMonth=r2(Math.max(Number(p.purchasePrice||0),Number(p.vpt||0))*(Number(hc.imiRate||0.003)/12));
-  const extraLoanHold=calcLoanHolding(a.loanAmt||0,Number((p.financingConfig||{}).interestRatePct||3.5),Number((p.financingConfig||{}).termYears||25),(a.holdMonths||0)+scTime);
-  const extraFinancingInterest=Math.max(0,r2((extraLoanHold.interestPaid||0)-(a.financingInterestHolding||0)));
-  const extraHolding=r2(scTime*(imiMonth+Number(hc.monthlyFixedCosts||0))+extraFinancingInterest);
+  const extraHolding=r2(scTime*(imiMonth+Number(hc.monthlyFixedCosts||0)));
   const finalNetProfit=newNetProfit-extraHolding;
   const finalRoiNet=newCapTotal>0?finalNetProfit/newCapTotal*100:0;
 
@@ -2142,7 +2072,6 @@ function bindInputs(p){
   b('sl_asale',p=>p.actualSalePrice,(p,v)=>p.actualSalePrice=Number(v||0),Number);
   b('sl_date',p=>p.saleDate,(p,v)=>p.saleDate=v);
   b('sl_ami',p=>p.saleConfig.brokerCommissionPct,(p,v)=>p.saleConfig.brokerCommissionPct=Number(v||0),Number);
-  b('sl_ami_vat',p=>p.saleConfig.brokerCommissionVatPct,(p,v)=>p.saleConfig.brokerCommissionVatPct=Number(v||0),Number);
   b('sl_oth',p=>p.saleConfig.otherSaleCosts,(p,v)=>p.saleConfig.otherSaleCosts=Number(v||0),Number);
   b('fs_inc',p=>p.fiscalConfig.capitalGainInclusionPct,(p,v)=>p.fiscalConfig.capitalGainInclusionPct=Number(v||50),Number);
   b('fs_ov',p=>p.fiscalConfig.manualTaxOverride,(p,v)=>p.fiscalConfig.manualTaxOverride=Number(v||0),Number);
@@ -2608,17 +2537,25 @@ function exportPDF(){
     // ── HELPER: sanitiza texto para Helvetica (sem suporte Unicode) ─
     const T=s=>{
       if(typeof s!=='string')return String(s||'');
-      return s
-        .replace(/à|á|â|ã|ä/g,'a').replace(/À|Á|Â|Ã|Ä/g,'A')
-        .replace(/ç/g,'c').replace(/Ç/g,'C')
-        .replace(/é|ê|è/g,'e').replace(/É|Ê|È/g,'E')
-        .replace(/í|ì|î/g,'i').replace(/Í|Ì|Î/g,'I')
-        .replace(/ó|ò|ô|õ/g,'o').replace(/Ó|Ò|Ô|Õ/g,'O')
-        .replace(/ú|ù|û/g,'u').replace(/Ú|Ù|Û/g,'U')
-        .replace(/ñ/g,'n').replace(/Ñ/g,'N')
-        .replace(/—|–/g,'-').replace(/’/g,"'")
-        .replace(/[^ -ÿ]/g,'?');
-    };
+      var m={
+        'à':'a','á':'a','â':'a','ã':'a','ä':'a',
+        'À':'A','Á':'A','Â':'A','Ã':'A','Ä':'A',
+        'ç':'c','Ç':'C',
+        'é':'e','ê':'e','è':'e','É':'E','Ê':'E','È':'E',
+        'í':'i','ì':'i','î':'i','Í':'I','Ì':'I','Î':'I',
+        'ó':'o','ò':'o','ô':'o','õ':'o','Ó':'O','Ò':'O','Ô':'O','Õ':'O',
+        'ú':'u','ù':'u','û':'u','Ú':'U','Ù':'U','Û':'U',
+        'ñ':'n','Ñ':'N',
+        '—':'-','–':'-','’':"'"
+      };
+      return s.split('').map(function(c){
+        if(m[c])return m[c];
+        var code=c.charCodeAt(0);
+        if(code===0x20AC)return c;
+        if(code>0xFF)return '';
+        return c;
+      }).join('');
+    }
     // ── HELPER: autoTable section ───────────────────────────────
     const AT=(title,rows,cols=['Rubrica','Valor'])=>{
       if(y>H-50){addFooterPage(doc,W,H,M);doc.addPage();y=20;}
@@ -2784,7 +2721,7 @@ function exportPDF(){
             const myTotal=myWorks.reduce((s,w)=>s+Number(w.amount||0),0);
             const myPct=(myTotal/totalWrkProj*100).toFixed(1)+'%';
             // Linha de cabeçalho do investidor
-            obrasRows.push([`▶ ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
+            obrasRows.push([`>> ${inv.name||'?'}`,``,``,`Total: ${eur(myTotal)}`,`(${myPct} das obras totais)`,``]);
             // Linhas individuais
             myWorks.forEach(w=>{
               obrasRows.push([
@@ -2878,9 +2815,8 @@ function exportPDF(){
       ].map(sc=>{
         const ns=a.saleRef*(1+sc.saleD/100);
         const no=a.wrkTotal*(1+sc.obraD/100);
-        const saleCostsPdf=calcSaleCosts(p,ns);
-        const na=saleCostsPdf.commissionTotal;
-        const nn=saleCostsPdf.saleNet;
+        const na=ns*(Number(p.saleConfig?.brokerCommissionPct||5)/100);
+        const nn=ns-na-(a.saleOth||0);
         const nc2=a.capTotal-a.wrkTotal+no;
         const np=nn-nc2;
         const nt=Math.max(0,np)*(a.inclusionPct||0.5)*0.28;
@@ -3165,80 +3101,90 @@ function deleteActiveProject(){
 //  IA — ANÁLISE DE MERCADO & API KEY
 // ═══════════════════════════════════════════════════════════════
 
-// ── Proxy IA (seguro) ────────────────────────────────────────
+// ── API Key & Proxy ─────────────────────────────────────────────
+function getApiKey(){return localStorage.getItem('tessa_k')||'';}
+function setApiKey(v){v?localStorage.setItem('tessa_k',v.trim()):localStorage.removeItem('tessa_k');}
 function getProxy(){return localStorage.getItem('tessa_px')||'';}
 function setProxy(v){v?localStorage.setItem('tessa_px',v.trim()):localStorage.removeItem('tessa_px');}
 
-// Mantidas por compatibilidade, mas sem uso para evitar segredos no browser.
-function getApiKey(){return '';}
-function setApiKey(){return;}
-
-// ── Proxy Setup Modal ──────────────────────────────────────────
+// ── API Key Setup Modal ─────────────────────────────────────────
 function openApiKeySetup(){
-  const px=getProxy();
+  const k=getApiKey(),px=getProxy();
   const ov=document.createElement('div');
   ov.className='ai-modal-overlay';ov.id='akSetup';
   ov.innerHTML=`<div class="ai-modal" style="max-height:90dvh">
     <div class="ai-modal-header">
-      <div class="ai-modal-title">🔐 Configurar Proxy IA</div>
+      <div class="ai-modal-title">🔑 Configurar API Anthropic</div>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('akSetup').remove()" style="font-size:18px;padding:4px 8px">✕</button>
     </div>
     <div class="ai-modal-body">
-      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;line-height:1.7;color:var(--text2)">
-        <strong style="color:var(--bad)">Segurança:</strong><br>
-        A chave da Anthropic já não é guardada no browser. A análise IA funciona apenas através de um proxy/serverless teu.<br><br>
-        <strong style="color:var(--accent)">O proxy deve:</strong><br>
-        1. Receber o pedido do frontend<br>
-        2. Inserir a tua API key no servidor<br>
-        3. Chamar a Anthropic no backend<br>
-        4. Devolver só o JSON necessário à app
+      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;line-height:1.7;color:var(--text2)">
+        <strong style="color:var(--accent)">Como obter a API Key:</strong><br>
+        1. Vai a <strong style="color:var(--text)">console.anthropic.com</strong><br>
+        2. Menu API Keys → Create Key<br>
+        3. Copia a chave (começa com <code style="color:var(--accent)">sk-ant-</code>)<br>
+        4. Cola aqui em baixo — fica só no teu dispositivo
       </div>
       <div class="fgrp" style="margin-bottom:10px">
-        <label class="flabel">URL do Proxy</label>
-        <input class="finput" id="pxInput" type="url" placeholder="https://tessa-ai.example.workers.dev" value="${px||''}"/>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">Ex.: Cloudflare Worker, Netlify Function, Vercel Function ou outro endpoint teu.</div>
+        <label class="flabel">Anthropic API Key</label>
+        <input class="finput" id="akInput" type="password" placeholder="sk-ant-api03-..." value="${k?'••••••':''}" style="font-family:monospace"/>
       </div>
-      <div id="akStatus" style="font-size:11px;min-height:18px;margin-bottom:12px;color:var(--text2)">${px?'<span style="color:var(--good)">✅ Proxy configurado</span>':'Sem proxy configurado'}</div>
+      <div class="fgrp" style="margin-bottom:10px">
+        <label class="flabel">URL do Proxy Cloudflare Worker</label>
+        <input class="finput" id="pxInput" type="url" placeholder="https://tessa-ai.XXX.workers.dev" value="${px||''}"/>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Necessário para contornar CORS do browser. Cria em dash.cloudflare.com (gratuito).</div>
+      </div>
+      <div id="akStatus" style="font-size:11px;min-height:18px;margin-bottom:12px;color:var(--text2)">${k?'<span style="color:var(--good)">✅ Chave configurada</span>':'Sem chave configurada'}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <button class="btn btn-ghost btn-sm" onclick="akTest()" style="justify-content:center">🧪 Testar</button>
         <button class="btn btn-primary btn-sm" onclick="akSave()" style="justify-content:center">💾 Guardar</button>
       </div>
-      ${px?`<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;color:var(--bad)" onclick="setProxy('');showToast('Proxy removido');document.getElementById('akSetup').remove()">🗑️ Remover proxy</button>`:''}
+      ${k?`<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;color:var(--bad)" onclick="setApiKey('');setProxy('');showToast('Removido');document.getElementById('akSetup').remove()">🗑️ Remover chave</button>`:''}
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  const inp=document.getElementById('akInput');
+  if(inp&&k)inp.addEventListener('focus',function(){if(this.value.startsWith('••'))this.value='';},{once:true});
 }
 
 function akSave(){
+  const k=(document.getElementById('akInput')?.value||'').trim();
   const px=(document.getElementById('pxInput')?.value||'').trim();
-  if(px&&!/^https?:\/\//i.test(px)){showToast('URL inválida do proxy');return;}
+  if(k&&!k.startsWith('••')){
+    if(!k.startsWith('sk-ant-')){showToast('Chave inválida — deve começar com sk-ant-');return;}
+    setApiKey(k);
+  }
   setProxy(px);
-  showToast(px?'✅ Proxy guardado':'Proxy removido');
+  showToast('✅ Guardado');
   document.getElementById('akSetup')?.remove();
 }
 
 async function akTest(){
-  const px=(document.getElementById('pxInput')?.value||'').trim()||getProxy();
+  const v=(document.getElementById('akInput')?.value||'').trim();
+  const k=v&&!v.startsWith('••')?v:getApiKey();
   const st=document.getElementById('akStatus');
-  if(!px){st.innerHTML='<span style="color:var(--bad)">❌ Sem proxy configurado</span>';return;}
-  st.innerHTML='<span style="color:var(--text2)">A testar proxy...</span>';
+  if(!k){st.innerHTML='<span style="color:var(--bad)">❌ Sem chave</span>';return;}
+  st.innerHTML='<span style="color:var(--text2)">A testar...</span>';
   try{
-    const d=await aiCall('claude-haiku-4-5-20251001',5,'ok',[{role:'user',content:'ok'}],false,px);
+    const d=await aiCall(k,'claude-haiku-4-5-20251001',5,'ok',[{role:'user',content:'ok'}],false);
     st.innerHTML=d.content?.length
-      ?'<span style="color:var(--good)">✅ Proxy funcional!</span>'
+      ?'<span style="color:var(--good)">✅ Chave válida e funcional!</span>'
       :'<span style="color:var(--bad)">❌ Resposta inesperada</span>';
   }catch(e){st.innerHTML=`<span style="color:var(--bad)">❌ ${esc(e.message)}</span>`;}
 }
 
 // ── API Caller ─────────────────────────────────────────────────
-async function aiCall(model,maxTok,sys,msgs,webSearch,proxyOverride){
-  const proxy=(proxyOverride||getProxy()||'').trim();
-  if(!proxy)throw new Error('Configura primeiro o proxy IA.');
-  const body={model,max_tokens:maxTok,system:sys,messages:msgs,webSearch:!!webSearch};
-  const res=await fetch(proxy,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+async function aiCall(key,model,maxTok,sys,msgs,webSearch){
+  const proxy=getProxy();
+  const url=proxy||'https://api.anthropic.com/v1/messages';
+  const body={model,max_tokens:maxTok,system:sys,messages:msgs};
+  if(webSearch)body.tools=[{type:'web_search_20250305',name:'web_search'}];
+  const hdrs={'Content-Type':'application/json','anthropic-version':'2023-06-01','x-api-key':key};
+  if(!proxy)hdrs['anthropic-dangerous-direct-browser-ipc']='true';
+  const res=await fetch(url,{method:'POST',headers:hdrs,body:JSON.stringify(body)});
   const data=await res.json().catch(()=>({error:{message:'HTTP '+res.status}}));
-  if(!res.ok||data.error)throw new Error(data?.error?.message||data?.message||('Erro proxy HTTP '+res.status));
+  if(data.error)throw new Error(data.error.message||'Erro API');
   return data;
 }
 
@@ -3247,19 +3193,19 @@ let _aiCache={};
 
 function openAIModal(p,a){
   if(!p)return showToast('Seleciona um projeto primeiro');
-  if(!getProxy()){
+  if(!getApiKey()){
     const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiNoKey';
     ov.innerHTML=`<div class="ai-modal" style="max-height:52dvh">
       <div class="ai-modal-header"><div class="ai-modal-title">🤖 Análise de Mercado IA</div>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiNoKey').remove()" style="font-size:18px;padding:4px 8px">✕</button></div>
       <div class="ai-modal-body" style="text-align:center;padding:32px 20px">
         <div style="font-size:48px;margin-bottom:14px">🔑</div>
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;margin-bottom:8px">Proxy IA necessário</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;margin-bottom:8px">API Key necessária</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:20px;line-height:1.6">
-          Configura o teu proxy IA para análise automática de mercado sem expor segredos no browser
+          Configura a tua chave Anthropic para análise automática de mercado com pesquisa real no Idealista.pt
         </div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('aiNoKey').remove();openApiKeySetup()">🔐 Configurar Proxy IA</button>
-        <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:10px;font-size:11px;color:var(--blue)">Criar conta em console.anthropic.com →</a>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('aiNoKey').remove();openApiKeySetup()">🔑 Configurar API Key</button>
+        <a href="https://console.anthropic.com" target="_blank" style="display:block;margin-top:10px;font-size:11px;color:var(--blue)">Criar conta em console.anthropic.com →</a>
       </div>
     </div>`;
     document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
@@ -3302,6 +3248,7 @@ function showAILoading(){
 async function runAIAnalysis(p,a,ck){
   showAILoading();
   try{
+    const k=getApiKey();
     // Contexto do imóvel
     const loc=(p.parish?p.parish+', ':'')+( p.city||'Lisboa');
     const typo=p.typology||'apartamento';
@@ -3327,7 +3274,7 @@ Responde so com JSON real (sem zeros):
 {"med":0,"psm":0,"vmin":0,"vmax":0,"n":0,"pos":0,"ok":2,"cf":2,"c":[{"p":0,"a":0},{"p":0,"a":0},{"p":0,"a":0}]}
 med=mediana mercado eur, psm=eur/m2 zona, vmin/vmax=intervalo preco realista, n=nr anuncios, pos=-2a2(posicionamento preco pedido vs mercado), ok=1-4(negocio), cf=1-3(confianca), c=3 comparaveis reais(p=preco,a=area m2). JSON ONLY.`;
 
-    const r1=await aiCall('claude-haiku-4-5-20251001',200,
+    const r1=await aiCall(k,'claude-haiku-4-5-20251001',200,
       'Real estate expert Portugal. Search Idealista.pt. Return ONLY JSON.',
       [{role:'user',content:prompt1}],true);
 
@@ -3382,7 +3329,7 @@ RISCOS: risco1 / risco2
 OPORTUNIDADES: op1 / op2
 RESUMO: (2 paragrafos executivos com dados concretos para apresentar a investidores)`;
 
-    const r2=await aiCall('claude-haiku-4-5-20251001',300,
+    const r2=await aiCall(k,'claude-haiku-4-5-20251001',300,
       'Especialista senior investimento imobiliario Portugal. Portugues. Terminologia financeira.',
       [{role:'user',content:prompt2}],false);
 
@@ -3421,7 +3368,7 @@ RESUMO: (2 paragrafos executivos com dados concretos para apresentar a investido
       <div style="background:var(--surface);padding:14px;border-radius:10px;font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.6">${esc(err.message)}</div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="document.getElementById('aiMod')?.remove();openAIModal(AP(),analyze(AP()))">🔄 Tentar novamente</button>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove();openApiKeySetup()">🔐 Proxy IA</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('aiMod')?.remove();openApiKeySetup()">🔑 API Key</button>
       </div>
     </div>`;
   }
@@ -4123,60 +4070,16 @@ async function exportAIPDF(p,a,ai){
 
 
 
-function renderShareState(html){
-  document.body.innerHTML=html;
-}
-function renderStructuredSharedReport(data){
-  const title=esc(data.title||data.name||'Relatório partilhado');
-  const location=esc([data.parish,data.city].filter(Boolean).join(', '));
-  const summary=esc(data.summary||data.resumo||'Relatório disponível.');
-  const metrics=data.metrics||{};
-  const cards=[
-    ['Preço pedido',metrics.askingPrice],
-    ['Valor mercado',metrics.marketMedian],
-    ['Intervalo',metrics.marketRange],
-    ['ROI líquido',metrics.roiNet],
-    ['Lucro líquido',metrics.netProfit]
-  ].filter(x=>x[1]);
-  renderShareState(`
-    <div style="min-height:100vh;background:#09090f;color:#f1f5f9;padding:28px 18px;font-family:'DM Sans',system-ui,sans-serif">
-      <div style="max-width:960px;margin:0 auto">
-        <div style="background:#17181f;border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.35)">
-          <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#f59e0b;margin-bottom:10px">Relatório partilhado</div>
-          <div style="font-family:'Syne',system-ui,sans-serif;font-weight:800;font-size:clamp(24px,5vw,34px);line-height:1.1;margin-bottom:8px">${title}</div>
-          ${location?`<div style="font-size:13px;color:#94a3b8;margin-bottom:18px">${location}</div>`:''}
-          <div style="font-size:14px;line-height:1.7;color:#cbd5e1;margin-bottom:20px">${summary}</div>
-          ${cards.length?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">${cards.map(([k,v])=>`<div style="background:#111218;border:1px solid rgba(255,255,255,.06);border-radius:18px;padding:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px">${esc(k)}</div><div style="font-family:'Syne',system-ui,sans-serif;font-weight:800;font-size:18px;color:#f59e0b">${esc(v)}</div></div>`).join('')}</div>`:''}
-        </div>
-      </div>
-    </div>`);
-}
-function renderLegacySharedHtml(html){
-  document.body.innerHTML='';
-  const wrap=document.createElement('div');
-  wrap.style.cssText='min-height:100vh;background:#09090f;padding:0;margin:0;';
-  const iframe=document.createElement('iframe');
-  iframe.setAttribute('sandbox','');
-  iframe.setAttribute('referrerpolicy','no-referrer');
-  iframe.style.cssText='width:100%;height:100vh;border:0;background:#fff;display:block;';
-  iframe.srcdoc=String(html||'');
-  wrap.appendChild(iframe);
-  document.body.appendChild(wrap);
-}
-
 // ── Check Share Link ───────────────────────────────────────────
 function checkShareLink(){
   const sid=new URLSearchParams(location.search).get('share');
   if(!sid)return;
   if(!DB){setTimeout(checkShareLink,800);return;}
-  renderShareState('<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;font-size:13px">A carregar...</div>');
+  document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;font-size:13px">A carregar...</div>';
   DB.collection('shared_reports').doc(sid).get().then(doc=>{
-    if(!doc.exists){renderShareState('<div style="text-align:center;padding:60px;background:#09090f;min-height:100vh;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🔗</div><div style="font-size:16px;font-weight:700;color:#f1f5f9">Link inválido ou expirado</div></div>');return;}
-    const data=doc.data()||{};
-    if(data.payload&&typeof data.payload==='object'){renderStructuredSharedReport(data.payload);return;}
-    if(data.html){renderLegacySharedHtml(data.html);return;}
-    renderStructuredSharedReport(data);
-  }).catch(e=>{renderShareState('<div style="padding:40px;color:#ef4444;text-align:center">Erro: '+esc(e.message)+'</div>');});
+    if(!doc.exists){document.body.innerHTML='<div style="text-align:center;padding:60px;background:#09090f;min-height:100vh;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🔗</div><div style="font-size:16px;font-weight:700;color:#f1f5f9">Link inválido ou expirado</div></div>';return;}
+    document.open();document.write(doc.data().html);document.close();
+  }).catch(e=>{document.body.innerHTML='<div style="padding:40px;color:#ef4444;text-align:center">Erro: '+e.message+'</div>';});
 }
 
 
