@@ -2670,6 +2670,9 @@ ${messageRaw}`;
         <label class="flabel">Link de convite</label>
         <textarea class="ftarea" id="inviteLink" readonly style="min-height:70px;font-family:monospace;font-size:12px">${esc(url)}</textarea>
       </div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <img src="${esc(window.INVITE_LOGO)}" alt="TESSA Advisors" style="display:block;max-width:260px;width:70%;height:auto">
+      </div>
       <div class="m-actions" style="margin-top:14px">
         ${INVITE_SCRIPT_URL?'<button class="btn btn-primary" onclick="openInviteScript()">Enviar pelo Google</button>':'<button class="btn btn-primary" onclick="copyInviteAll()">Copiar tudo</button>'}
         <button class="btn btn-secondary" onclick="copyInviteMessage()">Copiar mensagem</button>
