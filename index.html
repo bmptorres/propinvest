@@ -616,6 +616,7 @@ function activePageName(){return document.querySelector('.nav-btn.active')?.data
 function setAppRole(role){APP_ROLE=role||'owner';document.body.dataset.role=APP_ROLE;renderTopActions();}
 function hasInviteContext(){return new URLSearchParams(location.search).has('invite');}
 function inviteUrlFor(p,email){const u=new URL(location.href);u.hash='';u.search='';u.searchParams.set('invite',emailKey(email));u.searchParams.set('project',p?.id||'');return u.toString();}
+function appLogoUrl(){return new URL('assets/brand/tessa-advisors-logo.png',location.href).toString();}
 function inviteScriptUrlFor(){
   if(!INVITE_SCRIPT_URL)return '';
   const u=new URL(INVITE_SCRIPT_URL);
@@ -624,6 +625,7 @@ function inviteScriptUrlFor(){
   u.searchParams.set('message',window.INVITE_MESSAGE||'');
   u.searchParams.set('link',window.INVITE_LINK||'');
   u.searchParams.set('project',window.INVITE_PROJECT||'');
+  u.searchParams.set('logo',window.INVITE_LOGO||'');
   return u.toString();
 }
 function openInviteScript(){
@@ -2635,6 +2637,7 @@ ${messageRaw}`;
   window.INVITE_SUBJECT=subjectRaw;
   window.INVITE_MESSAGE=messageRaw;
   window.INVITE_LINK=url;
+  window.INVITE_LOGO=appLogoUrl();
   window.INVITE_FULL=fullRaw;
   const statusHtml=emailStatus==='shareError'
     ? `<div class="alert warn"><span>!</span><span>Convite preparado. Confirma as regras Firebase se a partilha nao aparecer.</span></div>`
