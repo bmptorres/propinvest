@@ -43,7 +43,10 @@
       display:flex;align-items:center;justify-content:center;
     }
     .logo-text{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;background:linear-gradient(135deg,#fff 40%,var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-    .topbar-actions{display:flex;gap:6px;}
+    .topbar-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end;min-width:0;}
+    .top-actions-inner{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:nowrap;}
+    .top-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex:0 0 auto;}
+    .top-action-btn{flex:0 0 auto;min-height:30px;padding:6px 9px;font-size:12px;white-space:nowrap;}
     .scroll-area{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:calc(var(--nav-h) + 42px + var(--safe-b));min-width:0;}
     /* Hide scrollbars everywhere */
     *{scrollbar-width:none;-ms-overflow-style:none;}
@@ -237,9 +240,36 @@
       .page{padding:20px 24px;}
       .kpi-grid{grid-template-columns:repeat(4,1fr);}
     }
+    @media(max-width:520px){
+      .topbar{align-items:flex-start;flex-wrap:wrap;gap:10px;padding:10px 12px;padding-top:calc(10px + var(--safe-t));}
+      .topbar .logo{width:100%;min-width:0;justify-content:flex-start;}
+      .topbar .logo img{max-width:min(78vw,310px);height:auto!important;max-height:28px;object-fit:contain;}
+      .topbar-actions{width:100%;justify-content:flex-start;overflow-x:auto;padding-bottom:1px;}
+      .top-actions-inner{width:100%;gap:5px;flex-wrap:wrap;align-items:center;}
+      .top-actions-inner .mode-chip{font-size:9px;padding:5px 7px;}
+      .top-avatar{width:26px;height:26px;font-size:11px;}
+      .top-action-btn{min-height:28px;padding:6px 8px!important;font-size:11px!important;border-radius:8px;}
+      .top-action-btn[data-mobile-label] .full-label{display:none;}
+      .top-action-btn[data-mobile-label]::after{content:attr(data-mobile-label);}
+      .sync-badge{top:calc(86px + var(--safe-t));left:12px;}
+      .section-header{align-items:flex-start;gap:10px;flex-wrap:wrap;}
+      .section-header .btn{padding:9px 12px;font-size:12px;}
+      .sub-tabs{gap:6px;margin-left:-2px;margin-right:-2px;padding-bottom:4px;}
+      .sub-tab{padding:7px 11px;font-size:11px;}
+      .m-actions{flex-wrap:wrap;}
+      .m-actions .btn{min-width:calc(50% - 5px);padding:10px 12px;font-size:12px;}
+      .ai-modal-header{padding:14px 14px 11px;gap:10px;}
+      .ai-modal-body{padding:14px;}
+    }
     @media(max-width:380px){
       .pc-stats{grid-template-columns:1fr 1fr;}
       .inv-stats{grid-template-columns:1fr 1fr;}
+      .topbar{padding-left:10px;padding-right:10px;}
+      .topbar .logo img{max-height:24px;max-width:82vw;}
+      .top-actions-inner{gap:4px;}
+      .top-action-btn{padding:5px 7px!important;font-size:10px!important;}
+      .mode-chip{font-size:8px;padding:4px 6px;}
+      .top-avatar{width:24px;height:24px;font-size:10px;}
     }
 
     /* ── LANDSCAPE — phone/tablet horizontal ───────────────── */
@@ -3150,7 +3180,7 @@ function renderTopActions(user=CURRENT_USER){
   const acts=q('topActs');if(!acts||!user)return;
   const initials=(user.displayName||user.email||'U').charAt(0).toUpperCase();
   const roleText=isInvestorMode()?'Investidor':'Admin';
-  acts.innerHTML=`<div style="display:flex;align-items:center;gap:6px;flex-shrink:0"><span class="mode-chip ${isInvestorMode()?'investor':'owner'}">${roleText}</span><div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0">${initials}</div><button class="btn btn-ghost btn-sm admin-only" id="btnDel" style="display:none;flex-shrink:0" onclick="deleteActiveProject()" title="Apagar">Del</button><button class="btn btn-ghost btn-sm" onclick="openApiKeySetup()" style="padding:5px 8px;font-size:13px;flex-shrink:0" title="Configurar IA">IA</button><button class="btn btn-ghost btn-sm" onclick="doLogout()" style="padding:6px 9px;font-size:13px;flex-shrink:0" title="Sair">Sair</button></div>`;
+  acts.innerHTML=`<div class="top-actions-inner"><span class="mode-chip ${isInvestorMode()?'investor':'owner'}">${roleText}</span><div class="top-avatar" title="${esc(user.email||'Utilizador')}">${initials}</div><button class="btn btn-ghost btn-sm top-action-btn admin-only" id="btnDel" style="display:none" onclick="deleteActiveProject()" title="Apagar projeto" data-mobile-label="Del"><span class="full-label">Apagar</span></button><button class="btn btn-ghost btn-sm top-action-btn" onclick="openApiKeySetup()" title="Configurar IA">IA</button><button class="btn btn-ghost btn-sm top-action-btn" onclick="doLogout()" title="Sair" data-mobile-label="Sair"><span class="full-label">Sair</span></button></div>`;
 }
 
 
