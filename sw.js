@@ -1,27 +1,28 @@
-const CACHE_NAME = 'propinvest-v8';
-const RUNTIME_CACHE = 'propinvest-runtime-v8';
+const CACHE_NAME = 'propinvest-v9';
+const RUNTIME_CACHE = 'propinvest-runtime-v9';
 
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './assets/icons/icon-192.png',
-  './assets/icons/icon-512.png'
+  './assets/icons/icon-512.png',
+  './assets/brand/tessa-advisors-logo.png'
 ];
 
 // ── INSTALL ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  console.log('[SW v8] Installing...');
+  console.log('[SW v9] Installing...');
 
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(APP_SHELL))
       .then(() => {
-        console.log('[SW v8] Installed successfully.');
+        console.log('[SW v9] Installed successfully.');
         return self.skipWaiting();
       })
       .catch(error => {
-        console.error('[SW v8] Install failed:', error);
+        console.error('[SW v9] Install failed:', error);
         throw error;
       })
   );
@@ -29,7 +30,7 @@ self.addEventListener('install', event => {
 
 // ── ACTIVATE ─────────────────────────────────────────────────────────────────
 self.addEventListener('activate', event => {
-  console.log('[SW v8] Activating...');
+  console.log('[SW v9] Activating...');
 
   event.waitUntil(
     caches.keys().then(keys =>
@@ -37,12 +38,12 @@ self.addEventListener('activate', event => {
         keys
           .filter(key => key !== CACHE_NAME && key !== RUNTIME_CACHE)
           .map(key => {
-            console.log('[SW v8] Deleting old cache:', key);
+            console.log('[SW v9] Deleting old cache:', key);
             return caches.delete(key);
           })
       )
     ).then(() => {
-      console.log('[SW v8] Active. Claiming clients.');
+      console.log('[SW v9] Active. Claiming clients.');
       return self.clients.claim();
     })
   );
