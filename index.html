@@ -2307,6 +2307,15 @@ function renderInvCards(p,a){
     const specEntries=Object.entries(bySpec).sort((a,b)=>b[1]-a[1]).slice(0,6);
     const specMax=specEntries.length?specEntries[0][1]:1;
 
+    // Obras por fornecedor para este investidor
+    const bySupplier={};
+    myWorks.forEach(w=>{
+      const supplier=(w.supplier||'').trim()||'Sem fornecedor';
+      bySupplier[supplier]=(bySupplier[supplier]||0)+Number(w.amount||0);
+    });
+    const supplierEntries=Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const supplierMax=supplierEntries.length?supplierEntries[0][1]:1;
+
     return`<div class="inv-card">
       <!-- Cabeçalho -->
       <div class="inv-head">
@@ -2372,18 +2381,23 @@ function renderInvCards(p,a){
             +'</div>'
             +'</div>';
         }).join('')}`:''}
-        ${myWorks.length>0?`<div style="margin-top:8px">
-          <div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Registos (${myWorks.length})</div>
-          ${myWorks.slice(0,5).map(w=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
-            <div>
-              <div style="font-size:10px;color:var(--text2)">${esc(w.specialty||'—')}${w.supplier?' · '+esc(w.supplier):''}</div>
-              ${w.date?`<div style="font-size:9px;color:var(--muted)">${w.date}</div>`:''}
-            </div>
-            <div style="font-size:11px;font-weight:700;color:var(--text);flex-shrink:0">${eur(w.amount)}</div>
-          </div>`).join('')}
-          ${myWorks.length>5?`<div style="font-size:10px;color:var(--muted);text-align:center;padding-top:6px">+ ${myWorks.length-5} registos adicionais</div>`:''}
-        </div>`:''}
-      </div>`:'<div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:8px;font-size:11px;color:var(--muted);text-align:center">Sem obras registadas para este investidor</div>'}
+        ${supplierEntries.length?`<div style="margin-top:12px">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Por Fornecedor</div>
+          ${supplierEntries.map(([supplier,val],i)=>{
+            const supplierPct=Math.round(val/supplierMax*100);
+            const colors=['var(--blue)','var(--purple)','var(--good)','var(--accent)','var(--bad)'];
+            const color=colors[i%colors.length];
+            return '<div style="margin-bottom:7px">'
+              +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'
+              +'<span style="font-size:10px;color:var(--text2);max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(supplier)+'</span>'
+              +'<span style="font-size:10px;font-weight:700;color:'+color+'">'+eur(val)+'</span>'
+              +'</div>'
+              +'<div style="height:5px;background:var(--surface);border-radius:999px;overflow:hidden">'
+              +'<div style="height:100%;width:'+supplierPct+'%;background:'+color+';opacity:.75;border-radius:999px"></div>'
+              +'</div>'
+              +'</div>';
+          }).join('')}
+        </div>`:''}      </div>`:'<div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:8px;font-size:11px;color:var(--muted);text-align:center">Sem obras registadas para este investidor</div>'}
     </div>`;
   }).join('');
 
