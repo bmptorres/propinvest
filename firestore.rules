@@ -1,0 +1,77 @@
+﻿rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function verified() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function sameUser(userId) {
+      return verified() && request.auth.uid == userId;
+    }
+
+    function isSharedOwner() {
+      return verified()
+        && resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isIncomingSharedOwner() {
+      return verified()
+        && request.resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isInvitedInvestor() {
+      return verified()
+        && request.auth.token.email in resource.data.investorEmails;
+    }
+
+    match /users/{userId}/{document=**} {
+      allow read, write: if sameUser(userId);
+    }
+
+    match /sharedProjects/{shareId} {
+      allow read: if isSharedOwner() || isInvitedInvestor();
+
+      allow create: if isIncomingSharedOwner()
+        && request.resource.data.keys().hasOnly([
+          'ownerUid',
+          'ownerEmail',
+          'projectId',
+          'projectName',
+          'investorEmails',
+          'project',
+          'updatedAt'
+        ])
+        && request.resource.data.investorEmails is list;
+
+      allow update: if isSharedOwner()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.keys().hasOnly([
+          'ownerUid',
+          'ownerEmail',
+          'projectId',
+          'projectName',
+          'investorEmails',
+          'project',
+          'updatedAt'
+        ])
+        && request.resource.data.investorEmails is list;
+
+      allow delete: if isSharedOwner();
+    }
+
+    match /shared_reports/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
