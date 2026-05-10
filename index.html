@@ -437,6 +437,16 @@
     <div class="login-err" id="loginErr"></div>
     <div class="login-info" id="loginInfo"></div>
 
+    <div id="formVerify" style="display:none">
+      <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.22);border-radius:12px;padding:16px;margin-bottom:14px;font-size:13px;line-height:1.6;color:var(--text2)">
+        <strong style="color:var(--blue);display:block;margin-bottom:6px">Confirma o teu email</strong>
+        Enviamos um email de verificacao. Por seguranca, a app so carrega projetos depois do email estar confirmado.
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;margin-bottom:8px" onclick="refreshEmailVerification()">Ja confirmei, entrar</button>
+      <button class="btn btn-secondary" style="width:100%;justify-content:center;padding:13px;margin-bottom:8px" onclick="sendVerificationEmail()">Reenviar email</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="doLogout(false)">Sair</button>
+    </div>
+
     <div id="formLogin">
       <div class="fgrp" style="margin-bottom:12px">
         <label class="flabel">Email</label>
@@ -607,15 +617,9 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "1003948279425",
   appId:             "1:1003948279425:web:1e0f217c333753ac372f80"
 };
-// Firestore Rules (cola em Firebase Console → Firestore → Rules):
-// rules_version = '2';
-// service cloud.firestore {
-//   match /databases/{database}/documents {
-//     match /users/{userId}/{document=**} {
-//       allow read, write: if request.auth != null && request.auth.uid == userId;
-//     }
-//   }
-// }
+// Firestore Rules: usa o ficheiro firestore.rules desta pasta.
+// No Firebase Console, cola esse ficheiro em Firestore Database -> Rules.
+// Estas regras exigem login com email verificado e limitam cada investidor aos projetos partilhados com o seu email.
 
 // ─────────────────────────────────────────────────────────────
 //  CONSTANTS & UTILS
@@ -667,7 +671,7 @@ function openInviteScript(){
 function applyModeUI(page){
   document.body.dataset.role=APP_ROLE;
   const app=q('app');if(!app)return;
-  const adminActions=['openNewProject','createProject','openInvM','rmInv','openCostM','saveCost','rmCost','deleteActiveProject','sendInvestorInvite'];
+  const adminActions=['openNewProject','createProject','openInvM','rmInv','openCostM','saveCost','rmCost','deleteActiveProject','sendInvestorInvite','openApiKeySetup','openAIModal'];
   app.querySelectorAll('button').forEach(btn=>{const on=btn.getAttribute('onclick')||'';const adminOnly=btn.id==='btnNew'||btn.classList.contains('admin-only')||adminActions.some(a=>on.includes(a));if(adminOnly)btn.style.display=canEdit()?'':'none';});
   app.querySelectorAll('input,textarea,select').forEach(el=>{el.disabled=isInvestorMode();});
   app.querySelectorAll('.read-only-banner').forEach(x=>x.remove());
@@ -728,12 +732,17 @@ function initFirebase(){
     AUTH=firebase.auth();
     DB=firebase.firestore();
     DB.enablePersistence({synchronizeTabs:true}).catch(()=>{});
-    AUTH.onAuthStateChanged(user=>{
+    AUTH.onAuthStateChanged(async user=>{
       if(user){
         CURRENT_USER=user;
-        showApp(user);
-        startSharedSync();
-        startSync();
+        try{await user.reload();CURRENT_USER=AUTH.currentUser||user;}catch(e){}
+        if(needsEmailVerification(CURRENT_USER)){
+          stopSync();
+          stopSharedSync();
+          showVerifyEmailScreen(CURRENT_USER);
+          return;
+        }
+        unlockVerifiedUser(CURRENT_USER);
       }else{
         CURRENT_USER=null;
         stopSync();
@@ -1187,7 +1196,7 @@ function renderDash(p,a){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
         <div class="label-xs" style="color:var(--accent)">Projeto Ativo</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-          <button class="btn btn-sm" style="background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(249,115,22,.15));border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="openAIModal(AP(),analyze(AP()))">${(()=>{try{return localStorage.getItem('ai_result_'+(p?.id||''))?'🤖 Ver Análise IA':'🤖 Analisar IA';}catch(e){return '🤖 Analisar IA';}})()}</button>
+          <button class="btn btn-sm admin-only" style="background:linear-gradient(135deg,rgba(245,158,11,.2),rgba(249,115,22,.15));border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:700" onclick="openAIModal(AP(),analyze(AP()))">${(()=>{try{return localStorage.getItem('ai_result_'+(p?.id||''))?'🤖 Ver Análise IA':'🤖 Analisar IA';}catch(e){return '🤖 Analisar IA';}})()}</button>
           
         </div>
       </div>
@@ -3183,6 +3192,12 @@ function showLoginScreen(){
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('app').style.display='none';
   document.getElementById('syncBadge').style.display='none';
+  const verify=q('formVerify');if(verify)verify.style.display='none';
+  const login=q('formLogin');if(login)login.style.display='block';
+  const reg=q('formRegister');if(reg)reg.style.display='none';
+  const tabL=q('tabLogin');if(tabL){tabL.style.display='';tabL.classList.add('active');}
+  const tabR=q('tabRegister');if(tabR){tabR.style.display='';tabR.classList.remove('active');}
+  clearLoginMsg();
 }
 
 function showApp(user){
@@ -3190,17 +3205,39 @@ function showApp(user){
   document.getElementById('app').style.display='flex';
   renderTopActions(user);
 }
+function needsEmailVerification(user){return !!(user&&user.email&&!user.emailVerified);}
+function unlockVerifiedUser(user){
+  CURRENT_USER=user;
+  showApp(user);
+  startSharedSync();
+  startSync();
+}
+function showVerifyEmailScreen(user){
+  setAppRole('owner');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('app').style.display='none';
+  document.getElementById('syncBadge').style.display='none';
+  const login=q('formLogin');if(login)login.style.display='none';
+  const reg=q('formRegister');if(reg)reg.style.display='none';
+  const verify=q('formVerify');if(verify)verify.style.display='block';
+  const tabL=q('tabLogin');if(tabL)tabL.style.display='none';
+  const tabR=q('tabRegister');if(tabR)tabR.style.display='none';
+  setLoginInfo('Verifica a caixa de entrada de '+(user?.email||'email')+'.');
+}
 function renderTopActions(user=CURRENT_USER){
   const acts=q('topActs');if(!acts||!user)return;
   const initials=(user.displayName||user.email||'U').charAt(0).toUpperCase();
   const roleText=isInvestorMode()?'Investidor':'Admin';
-  acts.innerHTML=`<div class="top-actions-inner"><span class="mode-chip ${isInvestorMode()?'investor':'owner'}">${roleText}</span><div class="top-avatar" title="${esc(user.email||'Utilizador')}">${initials}</div><button class="btn btn-ghost btn-sm top-action-btn admin-only" id="btnDel" style="display:none" onclick="deleteActiveProject()" title="Apagar projeto" data-mobile-label="Del"><span class="full-label">Apagar</span></button><button class="btn btn-ghost btn-sm top-action-btn" onclick="openApiKeySetup()" title="Configurar IA">IA</button><button class="btn btn-ghost btn-sm top-action-btn" onclick="doLogout()" title="Sair" data-mobile-label="Sair"><span class="full-label">Sair</span></button></div>`;
+  acts.innerHTML=`<div class="top-actions-inner"><span class="mode-chip ${isInvestorMode()?'investor':'owner'}">${roleText}</span><div class="top-avatar" title="${esc(user.email||'Utilizador')}">${initials}</div><button class="btn btn-ghost btn-sm top-action-btn admin-only" id="btnDel" style="display:none" onclick="deleteActiveProject()" title="Apagar projeto" data-mobile-label="Del"><span class="full-label">Apagar</span></button><button class="btn btn-ghost btn-sm top-action-btn admin-only" onclick="openApiKeySetup()" title="Configurar IA">IA</button><button class="btn btn-ghost btn-sm top-action-btn" onclick="doLogout()" title="Sair" data-mobile-label="Sair"><span class="full-label">Sair</span></button></div>`;
 }
 
 
 function showLoginTab(tab){
+  const verify=q('formVerify');if(verify)verify.style.display='none';
   document.getElementById('formLogin').style.display=tab==='login'?'block':'none';
   document.getElementById('formRegister').style.display=tab==='register'?'block':'none';
+  document.getElementById('tabLogin').style.display='';
+  document.getElementById('tabRegister').style.display='';
   document.getElementById('tabLogin').classList.toggle('active',tab==='login');
   document.getElementById('tabRegister').classList.toggle('active',tab==='register');
   clearLoginMsg();
@@ -3222,7 +3259,7 @@ function clearLoginMsg(){
 }
 
 async function doEmailLogin(){
-  const email=q('liEmail')?.value?.trim(),pass=q('liPass')?.value;
+  const email=emailKey(q('liEmail')?.value),pass=q('liPass')?.value;
   if(!email||!pass){setLoginErr('Preenche email e password.');return;}
   try{
     await AUTH.signInWithEmailAndPassword(email,pass);
@@ -3238,12 +3275,14 @@ async function doEmailLogin(){
 }
 
 async function doRegister(){
-  const name=q('regName')?.value?.trim()||'',email=q('regEmail')?.value?.trim(),pass=q('regPass')?.value;
+  const name=q('regName')?.value?.trim()||'',email=emailKey(q('regEmail')?.value),pass=q('regPass')?.value;
   if(!email||!pass){setLoginErr('Preenche email e password.');return;}
   if(pass.length<6){setLoginErr('A password deve ter pelo menos 6 caracteres.');return;}
   try{
     const cred=await AUTH.createUserWithEmailAndPassword(email,pass);
     if(name)await cred.user.updateProfile({displayName:name});
+    await cred.user.sendEmailVerification();
+    setLoginInfo('Conta criada. Enviamos um email de verificacao para '+email+'.');
   }catch(e){
     const msgs={
       'auth/email-already-in-use':'Este email já está registado.',
@@ -3264,7 +3303,7 @@ async function doGoogleLogin(){
 }
 
 async function doResetPassword(){
-  const email=q('liEmail')?.value?.trim();
+  const email=emailKey(q('liEmail')?.value);
   if(!email){setLoginErr('Escreve o teu email primeiro.');return;}
   try{
     await AUTH.sendPasswordResetEmail(email);
@@ -3274,8 +3313,28 @@ async function doResetPassword(){
   }
 }
 
-async function doLogout(){
-  if(!confirm('Terminar sessão?'))return;
+async function sendVerificationEmail(){
+  const user=AUTH?.currentUser;
+  if(!user){setLoginErr('Sessao expirada. Entra novamente.');return;}
+  try{
+    await user.sendEmailVerification();
+    setLoginInfo('Novo email de verificacao enviado para '+(user.email||'o teu email')+'.');
+  }catch(e){setLoginErr('Erro ao enviar verificacao: '+e.message);}
+}
+
+async function refreshEmailVerification(){
+  const user=AUTH?.currentUser;
+  if(!user){setLoginErr('Sessao expirada. Entra novamente.');return;}
+  try{
+    await user.reload();
+    const fresh=AUTH.currentUser;
+    if(fresh&&fresh.emailVerified){unlockVerifiedUser(fresh);return;}
+    setLoginErr('Email ainda nao confirmado. Abre o link recebido no email e tenta novamente.');
+  }catch(e){setLoginErr('Erro ao verificar estado: '+e.message);}
+}
+
+async function doLogout(ask=true){
+  if(ask&&!confirm('Terminar sessão?'))return;
   stopSync();
   stopSharedSync();
   await AUTH.signOut();
@@ -3358,6 +3417,7 @@ function setProxy(v){v?localStorage.setItem('tessa_px',v.trim()):localStorage.re
 
 // ── API Key Setup Modal ─────────────────────────────────────────
 function openApiKeySetup(){
+  if(!requireOwner())return;
   const k=getApiKey(),px=getProxy();
   const ov=document.createElement('div');
   ov.className='ai-modal-overlay';ov.id='akSetup';
@@ -3441,6 +3501,7 @@ async function aiCall(key,model,maxTok,sys,msgs,webSearch){
 let _aiCache={};
 
 function openAIModal(p,a){
+  if(!requireOwner())return;
   if(!p)return showToast('Seleciona um projeto primeiro');
   if(!getApiKey()){
     const ov=document.createElement('div');ov.className='ai-modal-overlay';ov.id='aiNoKey';
@@ -4323,12 +4384,7 @@ async function exportAIPDF(p,a,ai){
 function checkShareLink(){
   const sid=new URLSearchParams(location.search).get('share');
   if(!sid)return;
-  if(!DB){setTimeout(checkShareLink,800);return;}
-  document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;font-size:13px">A carregar...</div>';
-  DB.collection('shared_reports').doc(sid).get().then(doc=>{
-    if(!doc.exists){document.body.innerHTML='<div style="text-align:center;padding:60px;background:#09090f;min-height:100vh;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🔗</div><div style="font-size:16px;font-weight:700;color:#f1f5f9">Link inválido ou expirado</div></div>';return;}
-    document.open();document.write(doc.data().html);document.close();
-  }).catch(e=>{document.body.innerHTML='<div style="padding:40px;color:#ef4444;text-align:center">Erro: '+e.message+'</div>';});
+  document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#09090f;color:#94a3b8;text-align:center;padding:32px;font-family:system-ui,Arial"><div><div style="font-size:40px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:800;color:#f8fafc;margin-bottom:8px">Relatorios publicos desativados</div><div style="max-width:520px;line-height:1.6">Por seguranca, os relatorios ja nao sao carregados por link publico. Entra no PropInvest com uma conta autorizada para consultar os projetos.</div></div></div>';
 }
 
 
