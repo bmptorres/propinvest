@@ -1,5 +1,5 @@
-const CACHE_NAME = 'propinvest-v9';
-const RUNTIME_CACHE = 'propinvest-runtime-v9';
+const CACHE_NAME = 'propinvest-v10';
+const RUNTIME_CACHE = 'propinvest-runtime-v10';
 
 const APP_SHELL = [
   './',
@@ -12,17 +12,17 @@ const APP_SHELL = [
 
 // ── INSTALL ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  console.log('[SW v9] Installing...');
+  console.log('[SW v10] Installing...');
 
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(APP_SHELL))
       .then(() => {
-        console.log('[SW v9] Installed successfully.');
+        console.log('[SW v10] Installed successfully.');
         return self.skipWaiting();
       })
       .catch(error => {
-        console.error('[SW v9] Install failed:', error);
+        console.error('[SW v10] Install failed:', error);
         throw error;
       })
   );
@@ -30,7 +30,7 @@ self.addEventListener('install', event => {
 
 // ── ACTIVATE ─────────────────────────────────────────────────────────────────
 self.addEventListener('activate', event => {
-  console.log('[SW v9] Activating...');
+  console.log('[SW v10] Activating...');
 
   event.waitUntil(
     caches.keys().then(keys =>
@@ -38,12 +38,12 @@ self.addEventListener('activate', event => {
         keys
           .filter(key => key !== CACHE_NAME && key !== RUNTIME_CACHE)
           .map(key => {
-            console.log('[SW v9] Deleting old cache:', key);
+            console.log('[SW v10] Deleting old cache:', key);
             return caches.delete(key);
           })
       )
     ).then(() => {
-      console.log('[SW v9] Active. Claiming clients.');
+      console.log('[SW v10] Active. Claiming clients.');
       return self.clients.claim();
     })
   );
