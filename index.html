@@ -3534,12 +3534,12 @@ function getCachedAI(p,a){
   try{
     const raw=localStorage.getItem(aiStorageKey(p));if(!raw)return null;
     const cached=JSON.parse(raw);
-    if(cached&&cached.schema===2&&cached.fp===aiFingerprint(p,a))return cached;
+    if(cached&&cached.schema===5&&cached.fp===aiFingerprint(p,a))return cached;
   }catch(e){}
   return null;
 }
 function setCachedAI(p,a,result){
-  result.schema=2;result.fp=aiFingerprint(p,a);
+  result.schema=5;result.fp=aiFingerprint(p,a);
   _aiCache['ai|'+result.fp]=result;
   try{localStorage.setItem(aiStorageKey(p),JSON.stringify(result));}catch(e){}
 }
@@ -3553,13 +3553,30 @@ function normalizeAIData(d,p,a){
   d=d&&typeof d==='object'?d:{};
   const area=Number(p?.areaM2||0),saleExp=Number(p?.expectedSalePrice||0);
   let med=Number(d.med||0),psm=Number(d.psm||0),vmin=Number(d.vmin||0),vmax=Number(d.vmax||0);
+  const normSrc=x=>{
+    const raw=String(x?.s||x?.src||x?.source||x?.u||'').toLowerCase();
+    if(raw.includes('imovirtual'))return 'Imovirtual';
+    if(raw.includes('idealista'))return 'Idealista';
+    return '';
+  };
+  const comps=Array.isArray(d.c)?d.c.filter(x=>Number(x?.p)>0&&Number(x?.a)>0).map(x=>({
+    p:Number(x.p),a:Number(x.a),pm:Number(x.pm||Math.round(Number(x.p)/Number(x.a))),u:String(x.u||'').slice(0,300),s:normSrc(x)
+  })).slice(0,8):[];
+  if(med<=0&&comps.length){
+    const vals=comps.map(x=>x.p).sort((a,b)=>a-b),mid=Math.floor(vals.length/2);
+    med=Math.round(vals.length%2?vals[mid]:(vals[mid-1]+vals[mid])/2);
+  }
+  if(psm<=0&&comps.length){
+    const vals=comps.map(x=>x.pm||Math.round(x.p/x.a)).filter(Boolean).sort((a,b)=>a-b),mid=Math.floor(vals.length/2);
+    if(vals.length)psm=Math.round(vals.length%2?vals[mid]:(vals[mid-1]+vals[mid])/2);
+  }
   if(med<=0&&psm>0&&area>0)med=Math.round(psm*area);
   if(psm<=0&&med>0&&area>0)psm=Math.round(med/area);
+  if((vmin<=0||vmax<=0||vmax<=vmin)&&comps.length>=2){
+    const vals=comps.map(x=>x.p).sort((a,b)=>a-b);vmin=vals[0];vmax=vals[vals.length-1];
+  }
   if((vmin<=0||vmax<=0||vmax<=vmin)&&med>0){vmin=Math.round(med*.88);vmax=Math.round(med*1.12);}
-  const comps=Array.isArray(d.c)?d.c.filter(x=>Number(x?.p)>0&&Number(x?.a)>0).map(x=>({
-    p:Number(x.p),a:Number(x.a),pm:Number(x.pm||Math.round(Number(x.p)/Number(x.a))),u:String(x.u||'').slice(0,300)
-  })).slice(0,5):[];
-  const n=Math.max(0,Math.round(Number(d.n||comps.length||0)));
+  const n=Math.max(comps.length,Math.round(Number(d.n||0)));
   let pos=Number(d.pos||0);
   if(saleExp>0&&med>0){
     const dev=(saleExp-med)/med*100;
@@ -3572,10 +3589,11 @@ function normalizeAIData(d,p,a){
 }
 function aiQuality(d){
   const issues=[];
-  if(!d.med||!d.psm)issues.push('Sem mediana/€/m² validado.');
-  if((d.n||0)<3)issues.push('Poucos anúncios comparáveis.');
-  if(!d.c||d.c.length<2)issues.push('Comparáveis insuficientes.');
-  if((d.cf||1)<=1)issues.push('Confiança baixa: confirmar manualmente antes de decidir.');
+  if(!d.med||!d.psm)issues.push('Sem mediana/€/m² validado nas plataformas.');
+  if((d.n||0)<3)issues.push('Poucos anúncios comparáveis encontrados.');
+  if(!d.c||d.c.length<2)issues.push('Comparáveis insuficientes em Idealista/Imovirtual.');
+  if(d.marketEvidence?.method==='single_platform')issues.push('Dados encontrados apenas numa das plataformas.');
+  if((d.cf||1)<=1)issues.push('Confiança baixa: confirmar os anúncios nas plataformas antes de decidir.');
   const level=issues.length>=3?'Baixa':issues.length?'Média':'Alta';
   return {level,issues,cf:d.cf||1};
 }
@@ -3593,7 +3611,50 @@ function scoreInvestmentDeal(a,d){
   if(score>=2)return 3;
   return 4;
 }
+function consolidateMarketEvidence(d,p,a){
+  const saleExp=Number(p?.expectedSalePrice||0);
+  const comps=Array.isArray(d.c)?d.c:[];
+  const idealistaCount=comps.filter(x=>String(x.s||'').toLowerCase()==='idealista').length;
+  const imovirtualCount=comps.filter(x=>String(x.s||'').toLowerCase()==='imovirtual').length;
+  const knownSourceCount=idealistaCount+imovirtualCount;
+  const hasBoth=idealistaCount>0&&imovirtualCount>0;
+  const externalOk=Number(d.med||0)>0&&Number(d.psm||0)>0&&(comps.length>=2||Number(d.n||0)>=3);
+  let source=hasBoth?'Idealista + Imovirtual':idealistaCount>0?'Idealista':imovirtualCount>0?'Imovirtual':'Idealista + Imovirtual';
+  let method=hasBoth?'dual_platform':knownSourceCount>0?'single_platform':'platform_search';
+  if(!externalOk){source='Sem dados suficientes em Idealista/Imovirtual';method='missing';d.cf=1;}
+  else if(!hasBoth&&knownSourceCount>0){d.cf=Math.min(Number(d.cf||1),2);}
+  if(saleExp>0&&d.med>0){const dev=(saleExp-d.med)/d.med*100;d.pos=dev<-15?-2:dev<-5?-1:dev>15?2:dev>5?1:0;}
+  d.marketEvidence={source,method,externalMed:Number(d.med||0),externalPsm:Number(d.psm||0),references:Number(d.n||comps.length||0),idealistaCount,imovirtualCount};
+  d.sourceLabel=source;
+  return d;
+}
 
+function localAISections(p,a,d,quality){
+  const saleExp=Number(p?.expectedSalePrice||0),area=Number(p?.areaM2||0),med=Number(d?.med||0),psm=Number(d?.psm||0);
+  const diff=med>0&&saleExp>0?((saleExp-med)/med*100):0;
+  const src=d?.sourceLabel||d?.marketEvidence?.source||'Idealista/Imovirtual';
+  const pos=Math.abs(diff)<=5?'alinhado com a mediana':diff>5?'acima da mediana':'abaixo da mediana';
+  const posText=med>0
+    ?`O preço pedido está ${pos} dos anúncios comparáveis recolhidos em ${src}, com mediana de ${eur(med)}${psm?` (${eur(psm)}/m²)`:''}.`
+    :'Não foram recolhidos dados suficientes no Idealista/Imovirtual para calcular uma mediana defensável.';
+  const ris=[];
+  if(!med)ris.push('Falta de mediana validada nas plataformas.');
+  if((quality?.level||'Baixa')!=='Alta')ris.push('Amostra de mercado limitada; confirmar anúncios antes de decisão final.');
+  if(diff>10)ris.push('Preço pedido acima da mediana encontrada, podendo aumentar risco de venda lenta.');
+  if(Number(a?.netProfit||0)<=0)ris.push('Lucro líquido previsto não é positivo no cenário atual.');
+  const ops=[];
+  if(diff<0&&med>0)ops.push('Preço pedido abaixo da mediana pode criar margem negocial ou upside.');
+  if(Number(a?.roiNet||0)>=12)ops.push('ROI líquido previsto acima de patamar interessante para análise inicial.');
+  if(area>0&&psm>0)ops.push('€/m² comparável permite monitorizar reposicionamento de preço com dados objetivos.');
+  const res=med>0
+    ?`A análise compara os dados do projeto com anúncios comparáveis encontrados em Idealista e Imovirtual. A mediana apurada é ${eur(med)}, com intervalo estimado entre ${eur(d.vmin||0)} e ${eur(d.vmax||0)}. O preço pedido de ${eur(saleExp||0)} fica ${diff>=0?'+':''}${diff.toFixed(1)}% face à mediana.\n\nA qualidade dos dados é ${quality?.level||'Baixa'}. Esta leitura deve ser usada como apoio à decisão e confirmada diretamente nas plataformas quando a amostra for reduzida.`
+    :'A pesquisa não encontrou comparáveis suficientes no Idealista/Imovirtual para sustentar uma mediana. A decisão deve ficar dependente de nova pesquisa ou validação manual dos anúncios.';
+  return {posText,ris:ris.slice(0,3),ops:ops.slice(0,3),res};
+}
+function compactAIList(v){
+  if(Array.isArray(v))return v.map(x=>String(x||'').trim()).filter(x=>x.length>3).slice(0,3);
+  return String(v||'').split(/[\/\n;]/).map(x=>x.replace(/^[-•*\d.]+\s*/,'').trim()).filter(x=>x.length>3).slice(0,3);
+}
 function openAIModal(p,a){
   if(!requireOwner())return;
   if(!p)return showToast('Seleciona um projeto primeiro');
@@ -3634,7 +3695,7 @@ function showAILoading(){
         <div style="font-size:36px;margin-bottom:14px">🔍</div>
         <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:12px">A pesquisar mercado...</div>
         <div class="ai-loading-dots"><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div><div class="ai-loading-dot"></div></div>
-        <div style="margin-top:16px;font-size:11px;color:var(--muted)">Pesquisa web assistida · validação de confiança</div>
+        <div style="margin-top:16px;font-size:11px;color:var(--muted)">Pesquisa Idealista + Imovirtual · validação de confiança</div>
       </div>
     </div>
   </div>`;
@@ -3665,91 +3726,59 @@ async function runAIAnalysis(p,a,ck){
     const lucro=a?(a.netProfit||0):0;
     const roi=a?Math.round(a.roiNet||0):0;
 
-    // CHAMADA 1 — Pesquisa Idealista + JSON numérico puro (tokens mínimos)
-    const prompt1=`Pesquisa mercado imobiliario online, com prioridade para Idealista.pt se estiver disponivel: ${typo} ${area?area+'m2 ':''} ${loc}${extras.length?' com '+extras.join(' '):''}${cond?' estado '+cond:''}.
+    // CHAMADA UNICA — pesquisa web + resumo executivo compacto
+    const prompt1=`Pesquisa mercado imobiliario online em Portugal, cruzando Idealista.pt e Imovirtual.com como fontes prioritarias: ${typo} ${area?area+'m2 ':''} ${loc}${extras.length?' com '+extras.join(' '):''}${cond?' estado '+cond:''}.
 Preco pedido pelo investidor: ${saleExp?saleExp+'eur':'nao definido'}.
-Devolve apenas JSON valido, sem markdown. Se nao encontrares evidencia suficiente, deixa os campos numericos a 0 e usa cf=1. Nao inventes comparaveis.
-{"med":0,"psm":0,"vmin":0,"vmax":0,"n":0,"pos":0,"ok":2,"cf":1,"c":[{"p":0,"a":0,"pm":0,"u":""}]}
-med=mediana mercado eur, psm=eur/m2 zona, vmin/vmax=intervalo de preco suportado por evidencia, n=nr anuncios encontrados, pos=-2a2(posicionamento preco pedido vs mercado), ok=1-4(negocio), cf=1baixa 2media 3alta, c=comparaveis encontrados(p=preco,a=area m2,pm=eur/m2,u=url se disponivel). JSON ONLY.`;
+Dados financeiros do projeto: capital ${totalInv}eur, lucro liquido ${lucro}eur, ROI ${roi}%.
+Devolve apenas JSON valido, sem markdown. Se nao encontrares evidencia suficiente, deixa med/psm/vmin/vmax a 0 e usa cf=1. Nao inventes comparaveis nem conclusoes.
+{"med":0,"psm":0,"vmin":0,"vmax":0,"n":0,"pos":0,"ok":2,"cf":1,"c":[{"p":0,"a":0,"pm":0,"s":"idealista|imovirtual","u":""}],"pt":"","ris":[""],"ops":[""],"res":""}
+med=mediana dos anuncios comparaveis encontrados em Idealista+Imovirtual; psm=eur/m2; c=max 4 comparaveis reais, mesma zona/freguesia/tipologia, s=idealista ou imovirtual, u=url se disponivel; pt=1 frase posicionamento; ris=max2 riscos; ops=max2 oportunidades; res=max 2 frases executivas. JSON ONLY.`;
 
-    const r1=await aiCall(k,'claude-haiku-4-5-20251001',200,
-      'Real estate expert Portugal. Use web search cautiously. Return ONLY JSON. Never invent market comparables.',
+    const r1=await aiCall(k,'claude-haiku-4-5-20251001',420,
+      'Especialista imobiliario Portugal. Usa web search apenas para Idealista.pt e Imovirtual.com quando possivel. Responde JSON compacto. Nunca inventes comparaveis, precos ou URLs.',
       [{role:'user',content:prompt1}],true);
 
     const t1=(r1.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
     if(!t1)throw new Error('Sem resposta da API. Verifica créditos em console.anthropic.com');
 
-    // Parse JSON robusto
-    let d={med:0,psm:0,vmin:0,vmax:0,n:0,pos:0,ok:2,cf:2,c:[]};
+    let d={med:0,psm:0,vmin:0,vmax:0,n:0,pos:0,ok:2,cf:1,c:[],pt:'',ris:[],ops:[],res:''};
     try{
       const s=t1.replace(/```[a-z]*/gi,'').replace(/```/g,'').trim();
-      let depth=0,si=-1,ei=-1;
+      let dp=0,si=-1,ei=-1;
       for(let i=0;i<s.length;i++){
-        if(s[i]==='{'){if(si<0)si=i;depth++;}
-        else if(s[i]==='}'){depth--;if(d===0&&si>=0){ei=i;break;}}
+        if(s[i]==='{'){if(si<0)si=i;dp++;}
+        else if(s[i]==='}'){dp--;if(dp===0&&si>=0){ei=i;break;}}
       }
-      // fix: use depth not d
-      let dp=0,si2=-1,ei2=-1;
-      for(let i=0;i<s.length;i++){
-        if(s[i]==='{'){if(si2<0)si2=i;dp++;}
-        else if(s[i]==='}'){dp--;if(dp===0&&si2>=0){ei2=i;break;}}
-      }
-      if(si2>=0&&ei2>si2){
-        const parsed=JSON.parse(s.slice(si2,ei2+1));
-        if(parsed.med>0||parsed.psm>0)d=parsed;
+      if(si>=0&&ei>si){
+        const parsed=JSON.parse(s.slice(si,ei+1));
+        d={...d,...parsed};
       }
     }catch(e){
       const nx=(key,fb)=>{const m=t1.match(new RegExp('"'+key+'"\\s*:\\s*(-?[\\d.]+)'));return m?Number(m[1]):fb;};
       d.med=nx('med',0);d.psm=nx('psm',0);d.vmin=nx('vmin',0);d.vmax=nx('vmax',0);
-      d.n=nx('n',0);d.pos=nx('pos',0);d.ok=nx('ok',2);d.cf=nx('cf',2);
+      d.n=nx('n',0);d.pos=nx('pos',0);d.ok=nx('ok',2);d.cf=nx('cf',1);
     }
 
     d=normalizeAIData(d,p,a);
+    d=consolidateMarketEvidence(d,p,a);
     d.ok=scoreInvestmentDeal(a,d);
     const quality=aiQuality(d);
     const comps=d.c||[];
-
-    // CHAMADA 2 — Texto profissional (sem web search, barato)
     const diffPct=d.med>0&&saleExp>0?((saleExp-d.med)/d.med*100).toFixed(1):'—';
-    const posLabel={'-2':'muito abaixo','-1':'abaixo do','0':'dentro do','1':'acima do','2':'muito acima'}[String(d.pos)]||'—';
-    const okLabel={1:'excelente',2:'bom',3:'razoavel',4:'fraco'}[d.ok]||'razoavel';
-
-    const prompt2=`Imovel: ${typo} ${area?area+'m2':''} ${loc}, estado ${cond}${extras.length?', '+extras.join(', '):''}
-Preco pedido: ${saleExp?saleExp+'eur':'nao definido'}${saleExp&&area?' ('+Math.round(saleExp/area)+'eur/m2)':''}
-Mediana mercado indicada ${loc}: ${d.med?d.med+'eur ('+d.psm+'eur/m2)':'—'} | ${d.n||0} anuncios
-Intervalo mercado: ${d.vmin?d.vmin+'eur':'—'} a ${d.vmax?d.vmax+'eur':'—'}
-Posicionamento preco: ${posLabel} mercado (${diffPct}%)
-Capital investido: ${totalInv}eur | Lucro liquido: ${lucro}eur | ROI: ${roi}% | Negocio: ${okLabel} | Qualidade dados: ${quality.level}
-
-Responde em portugues profissional imobiliario, sem markdown, sem bullets:
-POSICIONAMENTO: (1 frase tecnica sobre o preco pedido vs mercado usando terminologia financeira imobiliaria)
-RISCOS: risco1 / risco2
-OPORTUNIDADES: op1 / op2
-RESUMO: (2 paragrafos executivos com dados concretos para apresentar a investidores. Se a qualidade dos dados for baixa, declara claramente que a validacao manual e necessaria)`;
-
-    const r2=await aiCall(k,'claude-haiku-4-5-20251001',300,
-      'Especialista senior investimento imobiliario Portugal. Portugues. Terminologia financeira. Sinaliza incerteza quando os dados de mercado forem fracos.',
-      [{role:'user',content:prompt2}],false);
-
-    const txt=(r2.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim()||'';
-    const sec=lbl=>{
-      const m=txt.match(new RegExp(lbl+'[:\\s]+([\\s\\S]*?)(?=POSICIONAMENTO:|RISCOS:|OPORTUNIDADES:|RESUMO:|$)','i'));
-      return m?m[1].trim():'';
-    };
-
+    const localTxt=localAISections(p,a,d,quality);
     const result={
       med:d.med, psm:d.psm, vmin:d.vmin, vmax:d.vmax, n:d.n,
-      pos:d.pos, ok:d.ok, cf:d.cf, comps, quality, sourceLabel:quality.level==='Baixa'?'Estimativa assistida':'Pesquisa web assistida',
-      posText:sec('POSICIONAMENTO'),
-      ris:sec('RISCOS').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3),
-      ops:sec('OPORTUNIDADES').split(/[\/\n]/).map(s=>s.replace(/^[-•*\d.]+\s*/,'')).filter(s=>s.length>4).slice(0,3),
-      res:sec('RESUMO')||(txt.length>30?txt:'Análise concluída.'),
+      pos:d.pos, ok:d.ok, cf:d.cf, comps, quality, sourceLabel:d.sourceLabel||'Pesquisa Idealista + Imovirtual', marketEvidence:d.marketEvidence,
+      posText:String(d.pt||localTxt.posText||'').trim(),
+      ris:compactAIList(d.ris).length?compactAIList(d.ris):localTxt.ris,
+      ops:compactAIList(d.ops).length?compactAIList(d.ops):localTxt.ops,
+      res:String(d.res||localTxt.res||'Análise concluída.').trim(),
       loc, typo, area, saleExp,
       salePerM2:area>0&&saleExp>0?Math.round(saleExp/area):0,
       totalInv, lucro, roi, diffPct:Number(diffPct)||0,
       analyzedAt:new Date().toLocaleString('pt-PT'),
+      tokenMode:'1 chamada web + resumo JSON compacto'
     };
-
     // Persiste
     window._aiResult=result;
     setCachedAI(p,a,result);
@@ -3814,6 +3843,14 @@ function showAIModal(r,p,a,ck,fromCache){
       <strong style="color:${r.quality.level==='Alta'?'var(--good)':r.quality.level==='Média'?'var(--accent)':'var(--bad)'}">Qualidade dos dados: ${r.quality.level}</strong>
       ${r.quality.issues&&r.quality.issues.length?`<div style="margin-top:4px">${r.quality.issues.map(esc).join(' ')}</div>`:'<div style="margin-top:4px">Dados suficientes para leitura indicativa do mercado.</div>'}
     </div>`:''}
+    ${r.marketEvidence?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:var(--text2);line-height:1.55">
+      <strong style="color:var(--text)">Base da mediana:</strong> ${esc(r.marketEvidence.source||'—')}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:7px">
+        <div>Mediana: <strong style="color:var(--text)">${r.marketEvidence.externalMed?eur(r.marketEvidence.externalMed):'—'}</strong></div>
+        <div>Idealista: <strong style="color:var(--text)">${r.marketEvidence.idealistaCount||0}</strong></div>
+        <div>Imovirtual: <strong style="color:var(--text)">${r.marketEvidence.imovirtualCount||0}</strong></div>
+      </div>
+    </div>`:''}
 
     <!-- POSICIONAMENTO DO PREÇO — secção principal -->
     <div class="ai-section">
@@ -3827,9 +3864,10 @@ function showAIModal(r,p,a,ck,fromCache){
           ${r.salePerM2?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(r.salePerM2)}/m²</div>`:''}
         </div>
         <div style="background:${pc.bg};border-radius:var(--radius-sm);padding:14px;border:1px solid ${pc.border}">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${pc.color};margin-bottom:5px">Mediana de mercado</div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${pc.color};margin-bottom:5px">Mediana consolidada</div>
           <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${r.med>0?eur(r.med):'—'}</div>
           ${r.psm?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${eur(r.psm)}/m²</div>`:''}
+          ${r.sourceLabel?`<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.35">${esc(r.sourceLabel)}</div>`:''}
         </div>
       </div>
 
@@ -3859,7 +3897,7 @@ function showAIModal(r,p,a,ck,fromCache){
       ${r.posText?`<div style="font-size:12px;color:var(--text2);padding:10px 12px;background:var(--surface);border-radius:var(--radius-sm);border-left:3px solid ${pc.color};line-height:1.6">${esc(r.posText)}</div>`:''}
     </div>
 
-    <!-- COMPARÁVEIS IDEALISTA -->
+    <!-- COMPARÁVEIS IDEALISTA + IMOVIRTUAL -->
     ${r.comps&&r.comps.length?`<div class="ai-section">
       <div class="ai-section-title">🏘️ Comparáveis indicados em ${esc(r.loc||'')}</div>
       ${r.comps.slice(0,3).map((c,i)=>{
@@ -4259,7 +4297,7 @@ async function exportAIPDF(p,a,ai){
       chkY(55);
       doc.setFillColor(...DK);doc.rect(M,y,W-M*2,8,'F');
       doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...WH);
-      doc.text('ANALISE DE MERCADO - PESQUISA WEB ASSISTIDA',M+3,y+5);y+=11;
+      doc.text('ANALISE DE MERCADO - IDEALISTA + IMOVIRTUAL',M+3,y+5);y+=11;
 
       // Caixa de posicionamento
       const posC2={'-2':BL,'-1':BL,'0':GR,'1':AM,'2':RD}[String(ai.pos)]||AM;
@@ -4269,7 +4307,7 @@ async function exportAIPDF(p,a,ai){
       doc.text(posT2,W/2,y+8,{align:'center'});
       doc.setFontSize(8);doc.setFont('helvetica','normal');
       const locStr=String(ai.loc||p.city||'').replace(/[^\w\s,.-]/g,'');
-      doc.text('Preço pedido: '+eur(ai.saleExp||0)+(ai.salePerM2?' ('+eur(ai.salePerM2)+'/m²)':'')+'   |   Mediana '+locStr+': '+eur(ai.med||0)+(ai.psm?' ('+eur(ai.psm)+'/m²)':''),W/2,y+16,{align:'center'});
+      doc.text('Preço pedido: '+eur(ai.saleExp||0)+(ai.salePerM2?' ('+eur(ai.salePerM2)+'/m²)':'')+'   |   Mediana '+locStr+': '+(ai.med?eur(ai.med):'—')+(ai.psm?' ('+eur(ai.psm)+'/m²)':''),W/2,y+16,{align:'center'});
       doc.text('Intervalo: '+eur(ai.vmin||0)+' – '+eur(ai.vmax||0)+(ai.n?' | '+ai.n+' anuncios indicados':''),W/2,y+22,{align:'center'});
       y+=32;
 
